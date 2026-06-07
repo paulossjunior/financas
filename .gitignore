@@ -1,0 +1,30 @@
+# Node
+node_modules/
+dist/
+.vite/
+
+# Rust
+target/
+src-tauri/target/
+*.rs.bk
+
+# Tauri
+src-tauri/gen/
+
+# User data
+faturas/
+tests/fixtures/*.xlsx
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env*
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user

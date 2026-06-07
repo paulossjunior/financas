@@ -1,0 +1,59 @@
+use chrono::{NaiveDate, NaiveDateTime};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use super::transaction::Transaction;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct YearMonth {
+    pub year: i32,
+    pub month: u8,
+}
+
+impl YearMonth {
+    pub fn new(year: i32, month: u8) -> Self {
+        Self { year, month }
+    }
+
+    pub fn from_date(date: NaiveDate) -> Self {
+        Self {
+            year: date.year(),
+            month: date.month() as u8,
+        }
+    }
+
+    pub fn to_string_iso(&self) -> String {
+        format!("{:04}-{:02}", self.year, self.month)
+    }
+}
+
+use chrono::Datelike;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Invoice {
+    pub id: Uuid,
+    pub filename: String,
+    pub reference_month: YearMonth,
+    pub due_date: Option<NaiveDate>,
+    pub transactions: Vec<Transaction>,
+    pub imported_at: NaiveDateTime,
+}
+
+impl Invoice {
+    pub fn new(
+        filename: String,
+        reference_month: YearMonth,
+        due_date: Option<NaiveDate>,
+        transactions: Vec<Transaction>,
+        imported_at: NaiveDateTime,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            filename,
+            reference_month,
+            due_date,
+            transactions,
+            imported_at,
+        }
+    }
+}
