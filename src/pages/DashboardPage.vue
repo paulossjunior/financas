@@ -34,15 +34,22 @@ function formatAmount(val: string): string {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 });
 }
 
+const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
 function formatPeriod(from: string, to: string): string {
   if (!from || !to) return "—";
   const [yf, mf] = from.split("-");
   const [yt, mt] = to.split("-");
-  const months = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-  const mfLabel = months[parseInt(mf) - 1];
-  const mtLabel = months[parseInt(mt) - 1];
+  const mfLabel = MONTHS[parseInt(mf) - 1];
+  const mtLabel = MONTHS[parseInt(mt) - 1];
   if (from === to) return `${mfLabel}/${yf}`;
   return `${mfLabel}/${yf} – ${mtLabel}/${yt}`;
+}
+
+function formatMonthFilter(month: string): string {
+  const [year, m] = month.split("-");
+  return `${MONTHS_FULL[parseInt(m) - 1] ?? m}/${year}`;
 }
 </script>
 
@@ -62,6 +69,12 @@ function formatPeriod(from: string, to: string): string {
     </div>
 
     <ImportWarnings :warnings="lastWarnings" />
+
+    <!-- Month filter badge -->
+    <div v-if="store.monthFilter" class="filter-badge">
+      <span>Filtrado: <strong>{{ formatMonthFilter(store.monthFilter) }}</strong></span>
+      <button class="clear-filter" @click="store.setMonthFilter(null)">✕ Limpar</button>
+    </div>
 
     <div v-if="store.error" class="msg-bar msg-bar--error">
       <span class="msg-icon">⚠</span>
@@ -154,6 +167,34 @@ h1 { font-size: 1.25rem; font-weight: 600; color: var(--clr-text-primary); lette
   border-radius: 100px;
   border: 1px solid var(--clr-stroke);
 }
+
+/* Month filter badge */
+.filter-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background: var(--clr-accent-light);
+  border: 1px solid rgba(0,120,212,0.25);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  color: var(--clr-accent);
+  margin-bottom: 0.75rem;
+}
+.filter-badge strong { font-weight: 700; }
+.clear-filter {
+  background: none;
+  border: 1px solid rgba(0,120,212,0.3);
+  border-radius: var(--radius-sm);
+  color: var(--clr-accent);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  padding: 0.2rem 0.6rem;
+  transition: background 0.1s;
+}
+.clear-filter:hover { background: rgba(0,120,212,0.1); }
 
 /* Message bar */
 .msg-bar {

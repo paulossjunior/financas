@@ -83,3 +83,11 @@ export interface AppConfig {
   faturas_directory: string;
   category_rules: CategoryRule[];
 }
+
+export interface MonthGroup {
+  month: string;
+  label: string;
+  invoices: InvoiceInfo[];
+  net_total: string | null;
+  invoice_count: number;
+}
