@@ -47,13 +47,45 @@ impl Invoice {
         transactions: Vec<Transaction>,
         imported_at: NaiveDateTime,
     ) -> Self {
+        let id = Uuid::new_v5(&Uuid::NAMESPACE_URL, filename.as_bytes());
         Self {
-            id: Uuid::new_v4(),
+            id,
             filename,
             reference_month,
             due_date,
             transactions,
             imported_at,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDateTime;
+
+    fn make_invoice(filename: &str) -> Invoice {
+        Invoice::new(
+            filename.to_string(),
+            YearMonth::new(2026, 5),
+            None,
+            vec![],
+            NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
+        )
+    }
+
+    #[test]
+    fn invoice_id_deterministic_from_filename() {
+        let a = make_invoice("2026-05-fatura.xlsx");
+        let b = make_invoice("2026-05-fatura.xlsx");
+        // This test MUST FAIL until we switch to Uuid::new_v5
+        assert_eq!(a.id, b.id, "same filename must produce same Invoice ID");
+    }
+
+    #[test]
+    fn invoice_id_differs_for_different_filenames() {
+        let a = make_invoice("2026-05-fatura-btg.xlsx");
+        let b = make_invoice("2026-05-fatura-dep.xlsx");
+        assert_ne!(a.id, b.id, "different filenames must produce different IDs");
     }
 }

@@ -82,6 +82,13 @@ export interface CategoryRule {
 export interface AppConfig {
   faturas_directory: string;
   category_rules: CategoryRule[];
+  transaction_overrides: Record<string, string>;
+}
+
+export interface CategoryGroup {
+  name: string;
+  keywords: string[];
+  priority: number;
 }
 
 export interface MonthGroup {

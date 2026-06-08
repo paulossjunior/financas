@@ -39,6 +39,33 @@ impl InvoiceStore {
         list.sort_by_key(|i| &i.reference_month);
         list
     }
+
+    pub fn for_each_transaction_mut<F>(&mut self, mut f: F) -> usize
+    where
+        F: FnMut(&mut crate::domain::Transaction) -> bool,
+    {
+        let mut changed = 0usize;
+        for invoice in self.invoices.values_mut() {
+            for tx in invoice.transactions.iter_mut() {
+                if f(tx) {
+                    changed += 1;
+                }
+            }
+        }
+        changed
+    }
+
+    pub fn update_transaction_category(&mut self, tx_id: &str, category: &str) -> bool {
+        for invoice in self.invoices.values_mut() {
+            for tx in invoice.transactions.iter_mut() {
+                if tx.id.to_string() == tx_id {
+                    tx.category = category.to_string();
+                    return true;
+                }
+            }
+        }
+        false
+    }
 }
 
 pub type SharedStore = Arc<Mutex<InvoiceStore>>;

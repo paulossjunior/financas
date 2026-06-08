@@ -54,7 +54,9 @@ pub fn import_invoice(
         ParseError::EmptySheet => ImportError::ParseError("Planilha vazia".into()),
     })?;
 
-    let invoice_id = Uuid::new_v4();
+    // Deterministic invoice_id from filename so transaction IDs are stable across sessions
+    let filename_str = path.file_name().unwrap_or_default().to_string_lossy();
+    let invoice_id = Uuid::new_v5(&Uuid::NAMESPACE_URL, filename_str.as_bytes());
 
     let cat_rules: Vec<_> = config.category_rules.clone();
     let categorizer = if cat_rules.is_empty() {
@@ -70,6 +72,14 @@ pub fn import_invoice(
     let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
     let reference_month = infer_month_from_filename(&filename);
     let row_count = transactions.len();
+
+    // Apply transaction overrides on top of rule-based categorization
+    let mut transactions = transactions;
+    for tx in transactions.iter_mut() {
+        if let Some(cat) = config.transaction_overrides.get(&tx.id.to_string()) {
+            tx.category = cat.clone();
+        }
+    }
 
     let invoice = Invoice::new(
         filename.clone(),
@@ -118,3 +128,54 @@ fn infer_month_from_filename(filename: &str) -> YearMonth {
 }
 
 use chrono::Datelike;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::application::store::InvoiceStore;
+    use std::collections::HashMap;
+    use std::path::Path;
+
+    fn fixture_path() -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("tests/fixtures/sample_fatura.xlsx")
+    }
+
+    #[test]
+    fn import_applies_transaction_override() {
+        let fixture = fixture_path();
+        assert!(fixture.exists(), "Fixture not found: {}", fixture.display());
+
+        // First import: no overrides — get real transaction ID
+        let no_override_config = AppConfig {
+            faturas_directory: "faturas".into(),
+            category_rules: vec![],
+            transaction_overrides: HashMap::new(),
+        };
+        let mut store = InvoiceStore::new();
+        import_invoice(&fixture, &mut store, &no_override_config).expect("first import failed");
+        let invoices = store.list();
+        assert!(!invoices.is_empty());
+        let first_tx_id = invoices[0].transactions[0].id.to_string();
+
+        // Second import: override that transaction's category
+        let mut overrides = HashMap::new();
+        overrides.insert(first_tx_id.clone(), "TestOverrideCategory".to_string());
+        let override_config = AppConfig {
+            faturas_directory: "faturas".into(),
+            category_rules: vec![],
+            transaction_overrides: overrides,
+        };
+        let mut store2 = InvoiceStore::new();
+        import_invoice(&fixture, &mut store2, &override_config).expect("second import failed");
+
+        let invoices2 = store2.list();
+        let actual_category = &invoices2[0].transactions[0].category;
+        assert_eq!(
+            actual_category, "TestOverrideCategory",
+            "override must be applied during import"
+        );
+    }
+}

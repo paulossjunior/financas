@@ -70,3 +70,26 @@ export async function saveConfig(config: AppConfig): Promise<void> {
     throw new Error(mapError(String(e)));
   }
 }
+
+export async function recategorizeInvoices(): Promise<number> {
+  return invoke<number>("recategorize_invoices");
+}
+
+export async function overrideTransactionCategory(
+  transactionId: string,
+  category: string
+): Promise<void> {
+  try {
+    await invoke<void>("override_transaction_category", { transactionId, category });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function removeTransactionOverride(transactionId: string): Promise<void> {
+  try {
+    await invoke<void>("remove_transaction_override", { transactionId });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}

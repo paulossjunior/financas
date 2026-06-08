@@ -8,6 +8,7 @@ use tauri::Manager;
 
 use application::store::new_shared_store;
 use commands::{
+    categories::{override_transaction_category, recategorize_invoices_cmd, remove_transaction_override},
     config::{get_config, save_config},
     dashboard::{get_dashboard_cmd, list_invoices, remove_invoice},
     import::import_invoices,
@@ -39,6 +40,9 @@ pub fn run() {
             remove_invoice,
             get_config,
             save_config,
+            recategorize_invoices_cmd,
+            override_transaction_category,
+            remove_transaction_override,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

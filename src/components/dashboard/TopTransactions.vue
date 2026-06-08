@@ -1,12 +1,30 @@
 <script setup lang="ts">
 import type { TransactionSummary } from "@/types/api.types";
 import MoneyAmount from "@/components/shared/MoneyAmount.vue";
+import TransactionCategoryOverride from "@/components/settings/TransactionCategoryOverride.vue";
+import { overrideTransactionCategory, removeTransactionOverride } from "@/services/tauri.service";
 
-defineProps<{ transactions: TransactionSummary[] }>();
+const props = defineProps<{
+  transactions: TransactionSummary[];
+  availableCategories?: string[];
+  transactionOverrides?: Record<string, string>;
+}>();
+
+const emit = defineEmits<{ refresh: [] }>();
 
 function formatDate(iso: string): string {
   const [y, m, d] = iso.split("-");
   return `${d}/${m}/${y}`;
+}
+
+async function handleOverride(txId: string, category: string) {
+  await overrideTransactionCategory(txId, category);
+  emit("refresh");
+}
+
+async function handleRemoveOverride(txId: string) {
+  await removeTransactionOverride(txId);
+  emit("refresh");
 }
 </script>
 
@@ -26,7 +44,18 @@ function formatDate(iso: string): string {
         <tr v-for="tx in transactions" :key="tx.id">
           <td class="date-cell">{{ formatDate(tx.date) }}</td>
           <td class="desc">{{ tx.description }}</td>
-          <td><span class="cat-badge">{{ tx.category }}</span></td>
+          <td>
+            <TransactionCategoryOverride
+              v-if="props.availableCategories && props.availableCategories.length > 0"
+              :transactionId="tx.id"
+              :currentCategory="tx.category"
+              :availableCategories="props.availableCategories"
+              :hasOverride="!!(props.transactionOverrides && props.transactionOverrides[tx.id])"
+              @override="handleOverride"
+              @removeOverride="handleRemoveOverride"
+            />
+            <span v-else class="cat-badge">{{ tx.category }}</span>
+          </td>
           <td class="right"><MoneyAmount :amount="tx.amount" /></td>
         </tr>
       </tbody>

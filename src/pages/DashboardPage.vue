@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, computed } from "vue";
 import { useInvoiceStore } from "@/stores/invoice.store";
+import { useSettingsStore } from "@/stores/settings.store";
 import ImportButton from "@/components/import/ImportButton.vue";
 import ImportWarnings from "@/components/import/ImportWarnings.vue";
 import BiggestSpendBanner from "@/components/dashboard/BiggestSpendBanner.vue";
@@ -10,14 +11,29 @@ import TopTransactions from "@/components/dashboard/TopTransactions.vue";
 import type { ParseWarning } from "@/types/api.types";
 
 const store = useInvoiceStore();
+const settingsStore = useSettingsStore();
 const lastWarnings = ref<ParseWarning[]>([]);
+
+const availableCategories = computed(() =>
+  settingsStore.categoryGroups.map((g) => g.name)
+);
+
+const transactionOverrides = computed(() =>
+  settingsStore.config?.transaction_overrides ?? {}
+);
 
 onMounted(async () => {
   await store.refreshInvoices();
+  await settingsStore.loadConfig();
   if (store.invoices.length > 0) {
     await store.loadDashboard();
   }
 });
+
+async function handleOverrideRefresh() {
+  await settingsStore.loadConfig();
+  await store.loadDashboard();
+}
 
 async function handleImport(paths: string[]): Promise<void> {
   try {
@@ -128,7 +144,12 @@ function formatMonthFilter(month: string): string {
 
       <!-- Transactions -->
       <div class="card mt">
-        <TopTransactions :transactions="store.dashboard.top_transactions" />
+        <TopTransactions
+          :transactions="store.dashboard.top_transactions"
+          :availableCategories="availableCategories"
+          :transactionOverrides="transactionOverrides"
+          @refresh="handleOverrideRefresh"
+        />
       </div>
     </template>
 

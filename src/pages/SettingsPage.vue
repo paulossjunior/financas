@@ -1,30 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { getConfig, saveConfig } from "@/services/tauri.service";
-import type { AppConfig } from "@/types/api.types";
+import { onMounted } from "vue";
+import { useSettingsStore } from "@/stores/settings.store";
+import CategoryList from "@/components/settings/CategoryList.vue";
 
-const config = ref<AppConfig>({ faturas_directory: "faturas", category_rules: [] });
-const saved = ref(false);
-const error = ref<string | null>(null);
+const store = useSettingsStore();
 
 onMounted(async () => {
-  try {
-    config.value = await getConfig();
-  } catch {
-    // use defaults
-  }
+  await store.loadConfig();
 });
 
 async function handleSave(): Promise<void> {
-  error.value = null;
-  saved.value = false;
-  try {
-    await saveConfig(config.value);
-    saved.value = true;
-    setTimeout(() => (saved.value = false), 2000);
-  } catch (e) {
-    error.value = String(e instanceof Error ? e.message : e);
-  }
+  await store.saveCategories();
 }
 </script>
 
@@ -43,7 +29,7 @@ async function handleSave(): Promise<void> {
           <p class="field-hint">Caminho relativo ao diretório do app onde as faturas XLSX são procuradas.</p>
           <input
             id="faturas-dir"
-            v-model="config.faturas_directory"
+            v-model="store.config.faturas_directory"
             type="text"
             placeholder="faturas/"
             class="text-input"
@@ -53,17 +39,33 @@ async function handleSave(): Promise<void> {
 
       <div class="divider" />
 
+      <section class="section">
+        <h2>Categorias &amp; Regras</h2>
+        <p class="field-hint">Gerencie categorias e palavras-chave para classificação automática de transações.</p>
+
+        <CategoryList
+          :groups="store.categoryGroups"
+          @add-category="store.addCategory('Nova Categoria')"
+          @delete-category="store.deleteCategory"
+          @rename-category="store.renameCategory"
+          @update-keywords="(name, kws) => { const g = store.categoryGroups.find(g => g.name === name); if (g) { g.keywords.splice(0, g.keywords.length, ...kws); } }"
+        />
+      </section>
+
+      <div class="divider" />
+
       <div class="actions">
-        <div v-if="error" class="msg-bar msg-bar--error">⚠ {{ error }}</div>
-        <div v-if="saved" class="msg-bar msg-bar--success">✓ Configurações salvas</div>
-        <button class="save-btn" @click="handleSave">Salvar</button>
+        <div v-if="store.error" class="msg-bar msg-bar--error">⚠ {{ store.error }}</div>
+        <button class="save-btn" :disabled="store.saving" @click="handleSave">
+          {{ store.saving ? "Salvando…" : "Salvar" }}
+        </button>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.page { padding: 1.5rem 2rem; max-width: 640px; margin: 0 auto; }
+.page { padding: 1.5rem 2rem; max-width: 720px; margin: 0 auto; }
 
 .page-header { margin-bottom: 1.25rem; }
 h1 { font-size: 1.25rem; font-weight: 600; color: var(--clr-text-primary); letter-spacing: -0.01em; }
@@ -76,18 +78,19 @@ h1 { font-size: 1.25rem; font-weight: 600; color: var(--clr-text-primary); lette
   box-shadow: var(--shadow-sm);
 }
 
+.section { margin-bottom: 0.5rem; }
 .section h2 {
   font-size: 0.8125rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--clr-text-muted);
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 
-.field { display: flex; flex-direction: column; gap: 0.25rem; }
+.field { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.5rem; }
 label { font-size: 0.875rem; font-weight: 600; color: var(--clr-text-primary); }
-.field-hint { font-size: 0.75rem; color: var(--clr-text-muted); margin-bottom: 0.25rem; }
+.field-hint { font-size: 0.75rem; color: var(--clr-text-muted); margin-bottom: 0.5rem; }
 .text-input {
   padding: 0.45rem 0.75rem;
   border: 1px solid var(--clr-stroke);
@@ -116,7 +119,6 @@ label { font-size: 0.875rem; font-weight: 600; color: var(--clr-text-primary); }
   font-weight: 500;
 }
 .msg-bar--error { background: #fde7e9; border: 1px solid #f1707b; color: var(--clr-negative); }
-.msg-bar--success { background: #dff6dd; border: 1px solid #107c10; color: var(--clr-positive); }
 
 .save-btn {
   padding: 0.45rem 1.25rem;
@@ -131,6 +133,7 @@ label { font-size: 0.875rem; font-weight: 600; color: var(--clr-text-primary); }
   transition: background 0.1s;
   white-space: nowrap;
 }
-.save-btn:hover { background: var(--clr-accent-hover); }
-.save-btn:active { background: #005a9e; }
+.save-btn:hover:not(:disabled) { background: var(--clr-accent-hover); }
+.save-btn:active:not(:disabled) { background: #005a9e; }
+.save-btn:disabled { opacity: 0.6; cursor: default; }
 </style>
