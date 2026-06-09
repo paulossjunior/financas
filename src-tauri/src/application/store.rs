@@ -55,6 +55,16 @@ impl InvoiceStore {
         changed
     }
 
+    pub fn list_all_transactions(&self) -> Vec<crate::domain::Transaction> {
+        let mut txs: Vec<crate::domain::Transaction> = self
+            .invoices
+            .values()
+            .flat_map(|inv| inv.transactions.iter().cloned())
+            .collect();
+        txs.sort_by(|a, b| b.date.cmp(&a.date));
+        txs
+    }
+
     pub fn update_transaction_category(&mut self, tx_id: &str, category: &str) -> bool {
         for invoice in self.invoices.values_mut() {
             for tx in invoice.transactions.iter_mut() {

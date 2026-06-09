@@ -5,6 +5,7 @@ import type {
   DashboardFilter,
   ImportResult,
   InvoiceInfo,
+  Transaction,
 } from "@/types/api.types";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -53,7 +54,7 @@ export async function listInvoices(): Promise<InvoiceInfo[]> {
 
 export async function removeInvoice(invoiceId: string): Promise<void> {
   try {
-    await invoke<void>("remove_invoice", { invoice_id: invoiceId });
+    await invoke<void>("remove_invoice", { invoiceId });
   } catch (e) {
     throw new Error(mapError(String(e)));
   }
@@ -65,14 +66,14 @@ export async function getConfig(): Promise<AppConfig> {
 
 export async function saveConfig(config: AppConfig): Promise<void> {
   try {
-    await invoke<void>("save_config", { new_config: config });
+    await invoke<void>("save_config", { newConfig: config });
   } catch (e) {
     throw new Error(mapError(String(e)));
   }
 }
 
 export async function recategorizeInvoices(): Promise<number> {
-  return invoke<number>("recategorize_invoices");
+  return invoke<number>("recategorize_invoices_cmd");
 }
 
 export async function overrideTransactionCategory(
@@ -89,6 +90,14 @@ export async function overrideTransactionCategory(
 export async function removeTransactionOverride(transactionId: string): Promise<void> {
   try {
     await invoke<void>("remove_transaction_override", { transactionId });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function getAllTransactions(): Promise<Transaction[]> {
+  try {
+    return await invoke<Transaction[]>("list_all_transactions");
   } catch (e) {
     throw new Error(mapError(String(e)));
   }

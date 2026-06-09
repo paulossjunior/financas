@@ -46,6 +46,7 @@ onErrorCaptured((err) => {
   <div class="app">
     <nav class="nav">
       <RouterLink to="/" active-class="active">📊 Dashboard</RouterLink>
+      <RouterLink to="/transacoes" active-class="active">🧾 Despesas</RouterLink>
       <RouterLink to="/historico" active-class="active">📈 Histórico</RouterLink>
       <RouterLink to="/configuracoes" active-class="active">⚙️ Configurações</RouterLink>
     </nav>

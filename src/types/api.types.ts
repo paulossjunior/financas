@@ -28,6 +28,22 @@ export interface DashboardFilter {
   date_to?: string;
 }
 
+export interface InstallmentInfo {
+  current: number;
+  total: number;
+}
+
+export interface Transaction {
+  id: string;
+  invoice_id: string;
+  date: string;
+  description: string;
+  amount: string;
+  category: string;
+  installment: InstallmentInfo | null;
+  is_reversal: boolean;
+}
+
 export interface TransactionSummary {
   id: string;
   date: string;

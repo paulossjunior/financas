@@ -12,6 +12,7 @@ use commands::{
     config::{get_config, save_config},
     dashboard::{get_dashboard_cmd, list_invoices, remove_invoice},
     import::import_invoices,
+    transactions::list_all_transactions,
 };
 
 use infrastructure::config_store::ConfigStore;
@@ -43,6 +44,7 @@ pub fn run() {
             recategorize_invoices_cmd,
             override_transaction_category,
             remove_transaction_override,
+            list_all_transactions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
