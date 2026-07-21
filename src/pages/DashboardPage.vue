@@ -4,7 +4,8 @@ import { useInvoiceStore } from "@/stores/invoice.store";
 import { useSettingsStore } from "@/stores/settings.store";
 import ImportButton from "@/components/import/ImportButton.vue";
 import ImportWarnings from "@/components/import/ImportWarnings.vue";
-import type { Category, ParseWarning } from "@/types/api.types";
+import type { Category, ParseWarning, Payslip } from "@/types/api.types";
+import { listPayslips } from "@/services/tauri.service";
 
 const store = useInvoiceStore();
 const settingsStore = useSettingsStore();
@@ -46,6 +47,27 @@ const topMax = computed(() => Math.max(1, ...topTransactions.value.map((t) => nu
 
 const expenseEntries = computed(() => store.manualEntries.filter((e) => e.kind === "expense"));
 const fixoCategories = computed(() => new Set(expenseEntries.value.map((e) => e.category)));
+
+// ── Payslip data for the selected scope (salary líquido, deductions) ──
+const payslips = ref<Payslip[]>([]);
+const scopePayslips = computed(() =>
+  store.monthFilter ? payslips.value.filter((p) => p.month === store.monthFilter) : payslips.value
+);
+const hasPayslip = computed(() => scopePayslips.value.length > 0);
+const salaryNet = computed(() => scopePayslips.value.reduce((a, p) => a + num(p.net), 0) / divisor.value);
+const salaryDed = computed(() => scopePayslips.value.reduce((a, p) => a + num(p.deductions), 0) / divisor.value);
+// Payroll deductions as detail rows (aggregated by description across scope payslips).
+const deductionRows = computed(() => {
+  const m = new Map<string, number>();
+  for (const p of scopePayslips.value) {
+    for (const it of p.items) {
+      if (it.kind === "desconto" && !it.offsetting) {
+        m.set(it.description, (m.get(it.description) ?? 0) + num(it.amount));
+      }
+    }
+  }
+  return [...m.entries()].map(([description, amount]) => ({ description, amount: amount / divisor.value }));
+});
 
 const UTIL_RE = /energ|[aá]gua|luz|saneam/i;
 const AGUA_RE = /[aá]gua|saneam/i;
@@ -174,6 +196,7 @@ onMounted(async () => {
   await store.refreshInvoices();
   await settingsStore.loadConfig();
   await store.loadManualEntries();
+  try { payslips.value = await listPayslips(); } catch { /* ignore */ }
   if (store.hasData) await store.loadDashboard();
 });
 
@@ -372,7 +395,17 @@ const fixosList = computed(() =>
           <div class="kpi">
             <p class="lbl">Receitas</p>
             <div class="val ok-text">{{ fmt(income) }}</div>
-            <div class="foot">salário, bolsas, rendimentos</div>
+            <div class="foot">salário bruto, bolsas, rendimentos</div>
+          </div>
+          <div v-if="hasPayslip" class="kpi">
+            <p class="lbl">Salário líquido</p>
+            <div class="val ok-text">{{ fmt(salaryNet) }}</div>
+            <div class="foot">do contracheque</div>
+          </div>
+          <div v-if="hasPayslip" class="kpi flag flag-amber">
+            <p class="lbl">Descontos do salário</p>
+            <div class="val">{{ fmt(salaryDed) }}</div>
+            <div class="foot">FUNPRESP, GEAP, PSS, IR</div>
           </div>
           <div class="kpi">
             <p class="lbl">Custo total {{ scopeWord }}</p>
@@ -433,8 +466,8 @@ const fixosList = computed(() =>
 
           <div class="card">
             <h3>Contas fixas — detalhe</h3>
-            <p class="cap">Valores mensais informados. Água e energia sinalizadas como anomalia.</p>
-            <div v-if="expenseEntries.length" class="fixlist">
+            <p class="cap">Contas fixas + descontos do salário (folha). Água e energia sinalizadas como anomalia.</p>
+            <div v-if="expenseEntries.length || deductionRows.length" class="fixlist">
               <div v-for="e in expenseEntries" :key="e.id" class="fixrow">
                 <span class="fn" :class="{ hot: isUtil(e.description) && utilitiesHigh }">
                   {{ e.description }}
@@ -442,12 +475,16 @@ const fixosList = computed(() =>
                 </span>
                 <b :class="{ 'red-text': isUtil(e.description) && utilitiesHigh }">{{ fmt(e.amount) }}</b>
               </div>
+              <div v-for="(dr, i) in deductionRows" :key="'ded'+i" class="fixrow">
+                <span class="fn">{{ dr.description }} <span class="badge-folha">folha</span></span>
+                <b>{{ fmt(dr.amount) }}</b>
+              </div>
               <div class="fixrow tot">
                 <span class="fn">Total fixo</span>
                 <b>{{ fmt(fixo) }}</b>
               </div>
             </div>
-            <p v-else class="cap">Nenhuma conta fixa. Cadastre em <strong>Receitas &amp; Fixos</strong>.</p>
+            <p v-else class="cap">Nenhuma conta fixa. Cadastre em <strong>Fixos &amp; Renda</strong>.</p>
           </div>
         </div>
       </section>
@@ -668,6 +705,7 @@ h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .fixrow.tot { font-weight: 800; }
 .fixrow.tot .fn, .fixrow.tot b { color: var(--ink); font-weight: 800; }
 .badge-hot { font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; background: var(--red-soft); color: var(--red); }
+.badge-folha { font-size: 9.5px; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 4px; }
 
 /* Bars */
 .bars { display: flex; flex-direction: column; gap: 10px; }
