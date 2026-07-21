@@ -43,12 +43,15 @@ export const useSettingsStore = defineStore("settings", () => {
     faturas_directory: "faturas",
     category_rules: [],
     transaction_overrides: {},
+    manual_entries: [],
   });
   const groups = ref<CategoryGroup[]>([]);
   const saving = ref(false);
   const error = ref<string | null>(null);
 
-  const categoryGroups = computed(() => groups.value);
+  const categoryGroups = computed(() =>
+    [...groups.value].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+  );
 
   async function loadConfig(): Promise<void> {
     try {

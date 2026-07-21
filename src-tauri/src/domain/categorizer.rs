@@ -22,16 +22,48 @@ impl Categorizer {
     }
 
     pub fn categorize(&self, description: &str) -> String {
-        let desc_upper = description.to_uppercase();
+        let desc_norm = normalize(description);
         for rule in &self.rules {
             for keyword in &rule.keywords {
-                if desc_upper.contains(&keyword.to_uppercase()) {
+                let kw = normalize(keyword);
+                if kw.is_empty() {
+                    continue;
+                }
+                if desc_norm.contains(&kw) {
                     return rule.category.clone();
                 }
             }
         }
         "Outros".to_string()
     }
+}
+
+/// Normalize a description or keyword for substring matching.
+///
+/// Card statements insert auth markers (`*`, `#`) right after the merchant name,
+/// e.g. `JIM.COM* 3REX CENTRO`. A keyword derived without those markers
+/// (`JIM.COM 3REX CENTRO`) would never substring-match the raw text. Normalizing
+/// both sides — uppercasing, turning `*`/`#` into spaces, and collapsing runs of
+/// whitespace — makes a merchant tag apply to every one of its transactions.
+pub fn normalize(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_space = true; // start true so leading whitespace is trimmed
+    for ch in s.chars() {
+        let c = if ch == '*' || ch == '#' { ' ' } else { ch };
+        if c.is_whitespace() {
+            if !prev_space {
+                out.push(' ');
+                prev_space = true;
+            }
+        } else {
+            out.extend(c.to_uppercase());
+            prev_space = false;
+        }
+    }
+    if out.ends_with(' ') {
+        out.pop();
+    }
+    out
 }
 
 fn default_rules() -> Vec<CategoryRule> {
@@ -156,5 +188,44 @@ mod tests {
         ];
         let c = Categorizer::new(rules);
         assert_eq!(c.categorize("XPTO STORE"), "Custom");
+    }
+
+    #[test]
+    fn test_keyword_across_auth_marker_matches_all_variants() {
+        // Tag derived without the `*` must still match every raw variant that carries it.
+        let rules = vec![CategoryRule {
+            keywords: vec!["JIM.COM 3REX CENTRO".into()],
+            category: "Saúde".into(),
+            priority: 5,
+        }];
+        let c = Categorizer::new(rules);
+        assert_eq!(c.categorize("Jim.com* 3rex Centro"), "Saúde");
+        assert_eq!(c.categorize("JIM.COM *3REX CENTRO SP"), "Saúde");
+        // A different Jim.com merchant is correctly NOT captured.
+        assert_eq!(c.categorize("Jim.com* Almeia Angel"), "Outros");
+    }
+
+    #[test]
+    fn test_short_gateway_keyword_catches_all() {
+        // Shortening the tag to the gateway name captures every sub-merchant.
+        let rules = vec![CategoryRule {
+            keywords: vec!["JIM.COM".into()],
+            category: "Saúde".into(),
+            priority: 5,
+        }];
+        let c = Categorizer::new(rules);
+        assert_eq!(c.categorize("Jim.com* 3rex Centro"), "Saúde");
+        assert_eq!(c.categorize("Jim.com* Almeia Angel"), "Saúde");
+    }
+
+    #[test]
+    fn test_empty_keyword_does_not_match_everything() {
+        let rules = vec![CategoryRule {
+            keywords: vec!["*".into(), "".into()],
+            category: "Bug".into(),
+            priority: 0,
+        }];
+        let c = Categorizer::new(rules);
+        assert_eq!(c.categorize("QUALQUER COISA"), "Outros");
     }
 }

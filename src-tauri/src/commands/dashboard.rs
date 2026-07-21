@@ -1,10 +1,13 @@
+use std::sync::Mutex;
+
 use serde::{Deserialize, Serialize};
 
 use tauri::State;
 use uuid::Uuid;
 
 use crate::application::{get_dashboard::get_dashboard, store::SharedStore};
-use crate::domain::{DashboardData, DashboardFilter};
+use crate::domain::{AppConfig, DashboardData, DashboardFilter};
+use crate::infrastructure::db::{persist, SharedDb};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InvoiceInfo {
@@ -20,9 +23,11 @@ pub struct InvoiceInfo {
 pub async fn get_dashboard_cmd(
     filter: Option<DashboardFilter>,
     store: State<'_, SharedStore>,
+    config: State<'_, Mutex<AppConfig>>,
 ) -> Result<DashboardData, String> {
+    let manual_entries = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
     let store_lock = store.lock().map_err(|e| e.to_string())?;
-    get_dashboard(&store_lock, filter.unwrap_or_default())
+    get_dashboard(&store_lock, &manual_entries, filter.unwrap_or_default())
 }
 
 #[tauri::command]
@@ -47,10 +52,16 @@ pub async fn list_invoices(store: State<'_, SharedStore>) -> Result<Vec<InvoiceI
 pub async fn remove_invoice(
     invoice_id: String,
     store: State<'_, SharedStore>,
+    db: State<'_, SharedDb>,
 ) -> Result<(), String> {
     let id = Uuid::parse_str(&invoice_id).map_err(|e| e.to_string())?;
-    let mut store_lock = store.lock().map_err(|e| e.to_string())?;
-    if store_lock.remove(&id) {
+    let removed = {
+        let mut store_lock = store.lock().map_err(|e| e.to_string())?;
+        store_lock.remove(&id)
+    };
+    if removed {
+        let snapshot = store.lock().map_err(|e| e.to_string())?.list_owned();
+        persist(&db, &snapshot);
         Ok(())
     } else {
         Err("INVOICE_NOT_FOUND".into())

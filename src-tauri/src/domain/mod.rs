@@ -2,12 +2,14 @@ pub mod category;
 pub mod categorizer;
 pub mod dashboard;
 pub mod invoice;
+pub mod manual_entry;
 pub mod transaction;
 
 pub use category::{aggregate_by_category, Category, TransactionSummary};
 pub use categorizer::{CategoryRule, Categorizer};
 pub use dashboard::{compute_dashboard, DashboardData, DashboardFilter};
 pub use invoice::{Invoice, YearMonth};
+pub use manual_entry::{EntryKind, ManualEntry};
 pub use transaction::{InstallmentInfo, Transaction};
 
 use std::collections::HashMap;
@@ -19,6 +21,9 @@ pub struct AppConfig {
     pub category_rules: Vec<CategoryRule>,
     #[serde(default)]
     pub transaction_overrides: HashMap<String, String>,
+    /// Cash movements outside the credit card: fixed bills and income.
+    #[serde(default)]
+    pub manual_entries: Vec<ManualEntry>,
 }
 
 impl Default for AppConfig {
@@ -27,6 +32,7 @@ impl Default for AppConfig {
             faturas_directory: "faturas".to_string(),
             category_rules: vec![],
             transaction_overrides: HashMap::new(),
+            manual_entries: vec![],
         }
     }
 }
@@ -40,6 +46,7 @@ mod tests {
         let json = r#"{"faturas_directory":"faturas","category_rules":[]}"#;
         let config: AppConfig = serde_json::from_str(json).expect("should deserialize");
         assert!(config.transaction_overrides.is_empty());
+        assert!(config.manual_entries.is_empty());
     }
 
     #[test]

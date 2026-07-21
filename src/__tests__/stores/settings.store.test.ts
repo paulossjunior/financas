@@ -33,6 +33,7 @@ describe("useSettingsStore", () => {
           { keywords: ["UBER"], category: "Transporte", priority: 20 },
         ],
         transaction_overrides: {},
+        manual_entries: [],
       });
 
       const store = await getStore();
@@ -49,6 +50,7 @@ describe("useSettingsStore", () => {
         faturas_directory: "faturas",
         category_rules: [],
         transaction_overrides: {},
+        manual_entries: [],
       });
 
       const store = await getStore();
@@ -67,6 +69,7 @@ describe("useSettingsStore", () => {
         faturas_directory: "faturas",
         category_rules: [],
         transaction_overrides: {},
+        manual_entries: [],
       });
 
       const store = await getStore();
@@ -90,6 +93,7 @@ describe("useSettingsStore", () => {
           { keywords: ["UBER"], category: "Transporte", priority: 20 },
         ],
         transaction_overrides: {},
+        manual_entries: [],
       });
 
       const store = await getStore();
@@ -110,6 +114,7 @@ describe("useSettingsStore", () => {
           { keywords: ["IFOOD"], category: "Alimentação", priority: 10 },
         ],
         transaction_overrides: {},
+        manual_entries: [],
       });
 
       const store = await getStore();
@@ -129,6 +134,7 @@ describe("useSettingsStore", () => {
         faturas_directory: "faturas",
         category_rules: [],
         transaction_overrides: {},
+        manual_entries: [],
       });
       mockSaveConfig.mockResolvedValue(undefined);
       mockRecategorize.mockResolvedValue(3);

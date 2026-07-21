@@ -1,16 +1,31 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { onMounted, ref } from "vue";
 import { useSettingsStore } from "@/stores/settings.store";
 import CategoryList from "@/components/settings/CategoryList.vue";
+import { hasSavedPassword, clearSavedPassword } from "@/services/tauri.service";
 
 const store = useSettingsStore();
 
+const pwSaved = ref(false);
+const pwBusy = ref(false);
+
 onMounted(async () => {
   await store.loadConfig();
+  pwSaved.value = await hasSavedPassword();
 });
 
 async function handleSave(): Promise<void> {
   await store.saveCategories();
+}
+
+async function forgetPassword(): Promise<void> {
+  pwBusy.value = true;
+  try {
+    await clearSavedPassword();
+    pwSaved.value = false;
+  } finally {
+    pwBusy.value = false;
+  }
 }
 </script>
 
@@ -34,6 +49,31 @@ async function handleSave(): Promise<void> {
             placeholder="faturas/"
             class="text-input"
           />
+        </div>
+      </section>
+
+      <div class="divider" />
+
+      <section class="section">
+        <h2>Segurança</h2>
+        <div class="field">
+          <label>Senha das faturas</label>
+          <p class="field-hint">
+            A senha de faturas protegidas fica guardada no Keychain do sistema (cifrada), nunca no banco de dados.
+          </p>
+          <div class="pw-row">
+            <span class="pw-state" :class="pwSaved ? 'on' : 'off'">
+              {{ pwSaved ? "✓ Senha salva neste dispositivo" : "Nenhuma senha salva" }}
+            </span>
+            <button
+              v-if="pwSaved"
+              class="forget-btn"
+              :disabled="pwBusy"
+              @click="forgetPassword"
+            >
+              {{ pwBusy ? "Removendo…" : "Esquecer senha" }}
+            </button>
+          </div>
         </div>
       </section>
 
@@ -109,6 +149,25 @@ label { font-size: 0.875rem; font-weight: 600; color: var(--clr-text-primary); }
 }
 
 .divider { height: 1px; background: var(--clr-stroke); margin: 1.25rem 0; }
+
+.pw-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.pw-state { font-size: 0.8125rem; font-weight: 500; }
+.pw-state.on { color: var(--clr-positive, #107c10); }
+.pw-state.off { color: var(--clr-text-muted); }
+.forget-btn {
+  padding: 0.35rem 0.9rem;
+  background: transparent;
+  color: var(--clr-negative);
+  border: 1px solid var(--clr-negative);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  transition: background 0.1s;
+}
+.forget-btn:hover:not(:disabled) { background: rgba(209,52,56,0.08); }
+.forget-btn:disabled { opacity: 0.6; cursor: default; }
 
 .actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .msg-bar {

@@ -4,313 +4,706 @@ import { useInvoiceStore } from "@/stores/invoice.store";
 import { useSettingsStore } from "@/stores/settings.store";
 import ImportButton from "@/components/import/ImportButton.vue";
 import ImportWarnings from "@/components/import/ImportWarnings.vue";
-import BiggestSpendBanner from "@/components/dashboard/BiggestSpendBanner.vue";
-import CategoryChart from "@/components/dashboard/CategoryChart.vue";
-import CategoryRanking from "@/components/dashboard/CategoryRanking.vue";
-import TopTransactions from "@/components/dashboard/TopTransactions.vue";
-import type { ParseWarning } from "@/types/api.types";
+import type { Category, ParseWarning } from "@/types/api.types";
 
 const store = useInvoiceStore();
 const settingsStore = useSettingsStore();
 const lastWarnings = ref<ParseWarning[]>([]);
 
-const availableCategories = computed(() =>
-  settingsStore.categoryGroups.map((g) => g.name)
+const d = computed(() => store.dashboard);
+const num = (v?: string) => parseFloat(v ?? "0") || 0;
+
+const income = computed(() => num(d.value?.total_income));
+const expense = computed(() => num(d.value?.net_total));
+const balance = computed(() => num(d.value?.balance));
+const cardNet = computed(() => num(d.value?.total_card_net));
+const fixo = computed(() => num(d.value?.total_manual_expense));
+const futureParcelas = computed(() => num(d.value?.installments_future_total));
+const monthParcelas = computed(() => num(d.value?.installments_month_total));
+const balancePositive = computed(() => balance.value >= 0);
+const savingsRate = computed(() => (income.value > 0 ? (balance.value / income.value) * 100 : null));
+
+const cardPct = computed(() => (expense.value > 0 ? (cardNet.value / expense.value) * 100 : 0));
+const fixoPct = computed(() => (expense.value > 0 ? (fixo.value / expense.value) * 100 : 0));
+
+const categories = computed<Category[]>(() => d.value?.categories ?? []);
+const catMax = computed(() => Math.max(1, ...categories.value.map((c) => num(c.net_total))));
+const topTransactions = computed(() => d.value?.top_transactions ?? []);
+const topMax = computed(() => Math.max(1, ...topTransactions.value.map((t) => num(t.amount))));
+
+const expenseEntries = computed(() => store.manualEntries.filter((e) => e.kind === "expense"));
+const fixoCategories = computed(() => new Set(expenseEntries.value.map((e) => e.category)));
+
+const UTIL_RE = /energ|[aá]gua|luz|saneam/i;
+const AGUA_RE = /[aá]gua|saneam/i;
+const ENERGIA_RE = /energ|luz/i;
+function isUtil(desc: string) { return UTIL_RE.test(desc); }
+const aguaAmt = computed(() =>
+  expenseEntries.value.filter((e) => AGUA_RE.test(e.description)).reduce((a, e) => a + num(e.amount), 0)
+);
+const energiaAmt = computed(() =>
+  expenseEntries.value.filter((e) => ENERGIA_RE.test(e.description)).reduce((a, e) => a + num(e.amount), 0)
+);
+const utilities = computed(() => aguaAmt.value + energiaAmt.value);
+const utilitiesHigh = computed(() => aguaAmt.value >= 300 || energiaAmt.value >= 500);
+
+const outros = computed(() => categories.value.find((c) => c.name === "Outros"));
+const outrosPct = computed(() => outros.value?.percentage ?? 0);
+const moradia = computed(() =>
+  categories.value.find((c) => /moradia/i.test(c.name))
 );
 
-const transactionOverrides = computed(() =>
-  settingsStore.config?.transaction_overrides ?? {}
+// weekday: Mon..Sun
+const WD_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+const weekday = computed(() => (d.value?.weekday_spending ?? []).map(num));
+const weekdayMax = computed(() => Math.max(1, ...weekday.value));
+const weekTotal = computed(() => weekday.value.reduce((a, b) => a + b, 0));
+const weekendPct = computed(() => {
+  const wknd = (weekday.value[4] ?? 0) + (weekday.value[5] ?? 0);
+  return weekTotal.value > 0 ? (wknd / weekTotal.value) * 100 : 0;
+});
+
+const installments = computed(() => (d.value?.installments ?? []).slice(0, 8));
+const instMax = computed(() => Math.max(1, ...installments.value.map((i) => num(i.amount))));
+
+const subscriptions = computed(() => d.value?.subscriptions ?? []);
+const subsTotal = computed(() => num(d.value?.subscriptions_total));
+const subsAnomaly = computed(() => subscriptions.value.find((s) => s.count >= 3));
+
+const hasComposition = computed(() => fixo.value > 0 || income.value > 0);
+
+// month/year filter
+const availableMonths = computed(() =>
+  [...new Set(store.invoices.map((i) => i.month).filter(Boolean))].sort().reverse()
 );
+function onMonthChange(e: Event): void {
+  const v = (e.target as HTMLSelectElement).value;
+  store.setMonthFilter(v || null);
+}
+
+// ── suggestions (rule-based, generated from live data) ──
+interface Suggestion { title: string; tag: string; pri: "red" | "amber" | "accent"; body: string; impact: string; min?: number; max?: number; }
+const suggestions = computed<Suggestion[]>(() => {
+  const s: Suggestion[] = [];
+  if (aguaAmt.value >= 300) {
+    s.push({
+      title: `Água ${fmt0(aguaAmt.value)} → caçar vazamento`,
+      tag: "Maior ROI", pri: "red",
+      body: "Conta de água muito acima da média de uma casa. Teste do hidrômetro: feche tudo por 1h e veja se o relógio gira. Cheque descarga/caixa d'água e peça revisão de leitura.",
+      impact: `Ganho potencial: até ${fmt0(aguaAmt.value * 0.8)}/mês se for vazamento.`,
+      min: aguaAmt.value * 0.6, max: aguaAmt.value * 0.9,
+    });
+  }
+  if (energiaAmt.value >= 500) {
+    s.push({
+      title: `Energia ${fmt0(energiaAmt.value)} → auditar consumo`,
+      tag: "Maior ROI", pri: "red",
+      body: "Consumo alto ou tarifa/bandeira ruim. Verifique chuveiro elétrico, ar-condicionado e geladeira antiga. Avalie tarifa branca e, se cabível, energia solar.",
+      impact: `Ganho potencial: ${fmt0(energiaAmt.value * 0.3)}–${fmt0(energiaAmt.value * 0.5)}/mês com ajuste de hábitos + equipamento.`,
+      min: energiaAmt.value * 0.3, max: energiaAmt.value * 0.5,
+    });
+  }
+  if (futureParcelas.value > 0) {
+    s.push({
+      title: "Congelar novas compras parceladas",
+      tag: "Caixa futuro", pri: "amber",
+      body: "Parcelas já contratadas travam a folga dos próximos meses. Cada nova parcela come o orçamento seguinte — que já está apertado com os fixos.",
+      impact: `Ganho: até ${fmt0(futureParcelas.value)} de fôlego preservado.`,
+    });
+  }
+  if (outrosPct.value >= 30) {
+    s.push({
+      title: `Enxergar os ${outrosPct.value.toFixed(0)}% em "Outros"`,
+      tag: "Visibilidade", pri: "amber",
+      body: 'Boa parte dos lançamentos do cartão está sem categoria (supermercado, açougue, pet, postos). Adicione regras em Configurações: SUPERMERCADO, MERCADO, ACOUGUE, HORTIFRUTI, PET.',
+      impact: outros.value ? `Ganho: controle sobre ${fmt0(num(outros.value.net_total))} hoje invisíveis.` : "Ganho: visibilidade dos gastos.",
+    });
+  }
+  if (subsTotal.value > 0) {
+    const top = subscriptions.value.slice(0, 3).map((x) => `${x.name} ${fmt0(num(x.total))}`).join(", ");
+    const anom = subsAnomaly.value
+      ? ` ${subsAnomaly.value.name} aparece ${subsAnomaly.value.count}× no mês — parece cobrança avulsa, não assinatura.`
+      : "";
+    s.push({
+      title: "Auditar assinaturas",
+      tag: "Recorrente", pri: "accent",
+      body: `${fmt0(subsTotal.value * 12)}/ano no cartão em recorrentes (${top}).${anom}`,
+      impact: `Ganho: cancelar/ajustar ≈ ${fmt0(subsTotal.value * 0.4)}/mês → ${fmt0(subsTotal.value * 0.4 * 12)}/ano.`,
+      min: subsTotal.value * 0.3, max: subsTotal.value * 0.6,
+    });
+  }
+  if (weekendPct.value >= 40) {
+    const wknd = (weekday.value[4] ?? 0) + (weekday.value[5] ?? 0);
+    s.push({
+      title: "Teto de fim de semana",
+      tag: "Comportamento", pri: "accent",
+      body: `Sexta e sábado concentram ${weekendPct.value.toFixed(0)}% do gasto de cartão da semana. Definir um limite e usar débito/PIX no lugar do crédito freia o impulso.`,
+      impact: `Ganho: corte de 15% ≈ ${fmt0(wknd * 0.15)}/mês.`,
+      min: wknd * 0.1, max: wknd * 0.2,
+    });
+  }
+  if (income.value > 0 && balance.value < 0) {
+    s.push({
+      title: "Saldo negativo no mês",
+      tag: "Alerta", pri: "red",
+      body: "As despesas superaram as receitas. Priorize cortar os fixos anômalos e segurar o cartão até reequilibrar.",
+      impact: `Déficit atual: ${fmt0(Math.abs(balance.value))}.`,
+    });
+  }
+  return s;
+});
+const potentialMin = computed(() => suggestions.value.reduce((a, s) => a + (s.min ?? 0), 0));
+const potentialMax = computed(() => suggestions.value.reduce((a, s) => a + (s.max ?? 0), 0));
+const hasPotential = computed(() => potentialMax.value > 0);
 
 onMounted(async () => {
   await store.refreshInvoices();
   await settingsStore.loadConfig();
-  if (store.invoices.length > 0) {
-    await store.loadDashboard();
-  }
+  await store.loadManualEntries();
+  if (store.hasData) await store.loadDashboard();
 });
 
-async function handleOverrideRefresh() {
-  await settingsStore.loadConfig();
-  await store.loadDashboard();
-}
+// password prompt for encrypted BTG files
+const pwPrompt = ref(false);
+const pwPaths = ref<string[]>([]);
+const pwValue = ref("");
+const pwError = ref<string | null>(null);
+const pwRemember = ref(true);
 
 async function handleImport(paths: string[]): Promise<void> {
   try {
+    // No password here: the backend silently reuses a saved keychain password if present.
     const results = await store.importInvoices(paths);
     lastWarnings.value = results.flatMap((r) => r.warnings);
     await store.loadDashboard();
-  } catch {
-    // error already set in store
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // ENCRYPTED_FILE: nothing saved yet. WRONG_PASSWORD: saved one is stale — re-prompt either way.
+    if (msg === "ENCRYPTED_FILE" || msg === "WRONG_PASSWORD") {
+      pwPaths.value = paths;
+      pwValue.value = "";
+      pwError.value = msg === "WRONG_PASSWORD" ? "Senha salva inválida. Informe a senha novamente." : null;
+      pwRemember.value = true;
+      pwPrompt.value = true;
+    }
+    // other errors already surfaced by the store
   }
 }
 
-function formatAmount(val: string): string {
-  const n = parseFloat(val) || 0;
+async function submitPassword(): Promise<void> {
+  pwError.value = null;
+  try {
+    const results = await store.importInvoices(pwPaths.value, pwValue.value, pwRemember.value);
+    lastWarnings.value = results.flatMap((r) => r.warnings);
+    await store.loadDashboard();
+    pwPrompt.value = false;
+    pwValue.value = "";
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "WRONG_PASSWORD") pwError.value = "Senha incorreta. Tente novamente.";
+    else if (msg === "ENCRYPTED_FILE") pwError.value = "Informe a senha do arquivo.";
+    else pwError.value = msg;
+  }
+}
+
+function cancelPassword(): void {
+  pwPrompt.value = false;
+  pwValue.value = "";
+  pwError.value = null;
+}
+
+function fmt(val: number | string): string {
+  const n = typeof val === "string" ? parseFloat(val) || 0 : val;
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 });
 }
+function fmt0(val: number): string {
+  return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+}
+function kBRL(v: number): string {
+  return (v / 1000).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "k";
+}
+function pctOf(v: number, max: number): number { return Math.max((v / max) * 100, 2); }
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-
-function formatPeriod(from: string, to: string): string {
-  if (!from || !to) return "—";
-  const [yf, mf] = from.split("-");
-  const [yt, mt] = to.split("-");
-  const mfLabel = MONTHS[parseInt(mf) - 1];
-  const mtLabel = MONTHS[parseInt(mt) - 1];
-  if (from === to) return `${mfLabel}/${yf}`;
-  return `${mfLabel}/${yf} – ${mtLabel}/${yt}`;
+function periodLabel(): string {
+  const p = d.value?.period;
+  if (!p || !p.from) return "—";
+  const [yf, mf] = p.from.split("-");
+  const [yt, mt] = p.to.split("-");
+  const a = `${MONTHS[parseInt(mf) - 1]}/${yf}`;
+  const b = `${MONTHS[parseInt(mt) - 1]}/${yt}`;
+  return p.from === p.to ? a : `${a} – ${b}`;
 }
-
 function formatMonthFilter(month: string): string {
   const [year, m] = month.split("-");
   return `${MONTHS_FULL[parseInt(m) - 1] ?? m}/${year}`;
 }
+function monthTitle(): string {
+  const p = d.value?.period;
+  if (!p || !p.from) return "";
+  const mf = parseInt(p.from.split("-")[1]);
+  return MONTHS_FULL[mf - 1]?.toLowerCase() ?? "";
+}
+function refLabel(): string {
+  const p = d.value?.period;
+  if (!p || !p.from) return "—";
+  const [y, mf] = p.from.split("-");
+  return `${MONTHS[parseInt(mf) - 1].toLowerCase()}/${y}`;
+}
+const fixosList = computed(() =>
+  [...new Set(expenseEntries.value.map((e) => e.description.toLowerCase()))].join(", ")
+);
 </script>
 
 <template>
-  <div class="page">
-    <!-- Page header -->
-    <div class="page-header">
-      <div class="page-title">
-        <h1>Dashboard</h1>
-        <span v-if="store.dashboard" class="period-badge">
-          {{ formatPeriod(store.dashboard.period.from, store.dashboard.period.to) }}
-        </span>
+  <div class="dash">
+    <!-- Header -->
+    <header class="top">
+      <div class="top-row">
+        <div>
+          <p class="eyebrow">Análise de despesas domésticas · Casa + Cartão BTG</p>
+          <h1>Custo total da casa<template v-if="monthTitle()"> em {{ monthTitle() }}</template></h1>
+        </div>
+        <div class="top-actions">
+          <select
+            v-if="availableMonths.length"
+            class="month-select"
+            :value="store.monthFilter ?? ''"
+            @change="onMonthChange"
+            title="Filtrar por mês"
+          >
+            <option value="">Todos os meses</option>
+            <option v-for="m in availableMonths" :key="m" :value="m">{{ formatMonthFilter(m) }}</option>
+          </select>
+          <span v-else-if="d" class="period">{{ periodLabel() }}</span>
+          <ImportButton @import-requested="handleImport" />
+        </div>
       </div>
-      <div class="page-actions">
-        <ImportButton @import-requested="handleImport" />
-      </div>
-    </div>
+      <p v-if="d" class="sub">
+        Cartão BTG (ref. {{ refLabel() }}) + contas fixas mensais. Total de <b>{{ fmt(expense) }}</b>:
+        <b>{{ fmt(cardNet) }}</b> no cartão e <b>{{ fmt0(fixo) }}</b> em fixos<template v-if="fixosList"> ({{ fixosList }})</template>.
+        Leitura de analista: peso, o que já está comprometido e onde cortar.
+        <template v-if="income > 0"> Receitas <b>{{ fmt(income) }}</b> · saldo <b :class="balancePositive ? 'ok-text' : 'red-text'">{{ fmt(balance) }}</b>.</template>
+      </p>
+    </header>
 
     <ImportWarnings :warnings="lastWarnings" />
 
-    <!-- Month filter badge -->
+    <!-- Password prompt for encrypted BTG files -->
+    <div v-if="pwPrompt" class="pw-overlay" @click.self="cancelPassword">
+      <div class="pw-modal">
+        <h3>Fatura protegida por senha</h3>
+        <p class="pw-sub">Este arquivo BTG está criptografado. Informe a senha para importar.</p>
+        <input
+          v-model="pwValue"
+          type="password"
+          class="pw-input"
+          placeholder="Senha do arquivo"
+          autofocus
+          @keyup.enter="submitPassword"
+        />
+        <label class="pw-remember">
+          <input type="checkbox" v-model="pwRemember" />
+          <span>Lembrar senha neste dispositivo</span>
+        </label>
+        <div v-if="pwError" class="pw-err">⚠ {{ pwError }}</div>
+        <div class="pw-actions">
+          <button class="pw-btn ghost" @click="cancelPassword">Cancelar</button>
+          <button class="pw-btn primary" :disabled="store.loading || !pwValue" @click="submitPassword">
+            {{ store.loading ? "Abrindo…" : "Importar" }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="store.monthFilter" class="filter-badge">
       <span>Filtrado: <strong>{{ formatMonthFilter(store.monthFilter) }}</strong></span>
       <button class="clear-filter" @click="store.setMonthFilter(null)">✕ Limpar</button>
     </div>
 
-    <div v-if="store.error" class="msg-bar msg-bar--error">
-      <span class="msg-icon">⚠</span>
-      {{ store.error }}
+    <div v-if="store.error" class="msg-error"><span>⚠</span>{{ store.error }}</div>
+
+    <div v-if="store.loading" class="loading">
+      <div class="shimmer" v-for="i in 8" :key="i" />
     </div>
 
-    <!-- Loading shimmer -->
-    <div v-if="store.loading" class="loading-row">
-      <div class="shimmer kpi-shimmer" />
-      <div class="shimmer kpi-shimmer" />
-      <div class="shimmer kpi-shimmer" />
-    </div>
+    <template v-if="d && !store.loading">
+      <!-- Indicadores -->
+      <section>
+        <h2>Indicadores</h2>
+        <div class="kpis">
+          <div :class="['kpi', 'flag', balancePositive ? 'flag-ok' : 'flag-red']">
+            <p class="lbl">Saldo do mês</p>
+            <div class="val" :class="balancePositive ? 'ok-text' : 'red-text'">{{ fmt(balance) }}</div>
+            <div class="foot" v-if="savingsRate !== null">{{ balancePositive ? "sobra" : "déficit" }} · {{ Math.abs(savingsRate).toFixed(0) }}% da receita</div>
+            <div class="foot" v-else>cadastre receitas para ver o saldo</div>
+          </div>
+          <div class="kpi">
+            <p class="lbl">Receitas</p>
+            <div class="val ok-text">{{ fmt(income) }}</div>
+            <div class="foot">salário, bolsas, rendimentos</div>
+          </div>
+          <div class="kpi">
+            <p class="lbl">Custo total do mês</p>
+            <div class="val">{{ fmt(expense) }}</div>
+            <div class="foot">cartão {{ fmt0(cardNet) }} + fixos {{ fmt0(fixo) }}</div>
+          </div>
+          <div class="kpi">
+            <p class="lbl">Contas fixas / mês</p>
+            <div class="val">{{ fmt(fixo) }}</div>
+            <div class="foot">{{ fixoPct.toFixed(0) }}% das despesas</div>
+          </div>
+          <div v-if="utilities > 0" :class="['kpi', 'flag', utilitiesHigh ? 'flag-red' : '']">
+            <p class="lbl">Energia + Água</p>
+            <div class="val" :class="utilitiesHigh ? 'red-text' : ''">{{ fmt(utilities) }}</div>
+            <span v-if="utilitiesHigh" class="pill bad">▲ acima do normal</span>
+            <div v-else class="foot">contas de utilidade</div>
+          </div>
+          <div v-if="futureParcelas > 0" class="kpi flag flag-amber">
+            <p class="lbl">Comprometido em parcelas</p>
+            <div class="val">{{ fmt(futureParcelas) }}</div>
+            <span class="pill warn">◆ trava caixa futuro</span>
+          </div>
+          <div :class="['kpi', 'flag', outrosPct >= 35 ? 'flag-amber' : '']">
+            <p class="lbl">Não categorizado</p>
+            <div class="val">{{ outrosPct.toFixed(1) }}%</div>
+            <span v-if="outrosPct >= 35" class="pill warn">◆ visibilidade</span>
+            <div v-else class="foot">em "Outros"</div>
+          </div>
+          <div v-if="moradia" class="kpi">
+            <p class="lbl">Moradia</p>
+            <div class="val">{{ fmt(moradia.net_total) }}</div>
+            <div class="foot">{{ moradia.percentage.toFixed(0) }}% do total</div>
+          </div>
+        </div>
+      </section>
 
-    <template v-if="store.dashboard && !store.loading">
-      <!-- KPI row -->
-      <div class="kpi-row">
-        <div class="kpi-card">
-          <span class="kpi-label">Total Líquido</span>
-          <span class="kpi-value kpi-value--large">{{ formatAmount(store.dashboard.net_total) }}</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">Total Cobrado</span>
-          <span class="kpi-value">{{ formatAmount(store.dashboard.total_charged) }}</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">Estornos</span>
-          <span class="kpi-value kpi-value--positive">{{ formatAmount(store.dashboard.total_reversals) }}</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">Faturas</span>
-          <span class="kpi-value">{{ store.dashboard.invoice_count }}</span>
-          <span class="kpi-sub">importadas</span>
-        </div>
-      </div>
+      <!-- Fixo x variavel -->
+      <section v-if="hasComposition">
+        <h2>Fixo × variável</h2>
+        <div class="grid2">
+          <div class="card">
+            <h3>Composição do custo total</h3>
+            <p class="cap">Fixo = contas recorrentes fora do cartão. Variável = tudo no cartão (inclui parcelas e assinaturas).</p>
+            <div class="split">
+              <div class="seg seg-card" :style="{ flexGrow: cardNet }" :title="`Cartão: ${fmt(cardNet)}`">
+                <span v-if="cardPct > 12">Cartão {{ cardPct.toFixed(1) }}%</span>
+              </div>
+              <div class="seg seg-fixo" :style="{ flexGrow: fixo }" :title="`Fixos: ${fmt(fixo)}`">
+                <span v-if="fixoPct > 12">Fixos {{ fixoPct.toFixed(1) }}%</span>
+              </div>
+            </div>
+            <div class="legend">
+              <span><i class="dot dot-card"></i> Cartão / variável — {{ fmt(cardNet) }}</span>
+              <span><i class="dot dot-fixo"></i> Fixos — {{ fmt(fixo) }}</span>
+            </div>
+            <p class="note">Regra de bolso saudável: fixos ≤ 50% da renda. Fique de olho no <b>valor absoluto</b> de água e energia.</p>
+          </div>
 
-      <!-- Biggest spend -->
-      <BiggestSpendBanner
-        v-if="store.dashboard.categories.length > 0"
-        :category="store.dashboard.categories[0]"
-      />
-
-      <!-- Charts -->
-      <div class="charts-grid">
-        <div class="card">
-          <CategoryChart :categories="store.dashboard.categories" />
+          <div class="card">
+            <h3>Contas fixas — detalhe</h3>
+            <p class="cap">Valores mensais informados. Água e energia sinalizadas como anomalia.</p>
+            <div v-if="expenseEntries.length" class="fixlist">
+              <div v-for="e in expenseEntries" :key="e.id" class="fixrow">
+                <span class="fn" :class="{ hot: isUtil(e.description) && utilitiesHigh }">
+                  {{ e.description }}
+                  <span v-if="isUtil(e.description) && utilitiesHigh" class="badge-hot">alto</span>
+                </span>
+                <b :class="{ 'red-text': isUtil(e.description) && utilitiesHigh }">{{ fmt(e.amount) }}</b>
+              </div>
+              <div class="fixrow tot">
+                <span class="fn">Total fixo</span>
+                <b>{{ fmt(fixo) }}</b>
+              </div>
+            </div>
+            <p v-else class="cap">Nenhuma conta fixa. Cadastre em <strong>Receitas &amp; Fixos</strong>.</p>
+          </div>
         </div>
-        <div class="card">
-          <CategoryRanking :categories="store.dashboard.categories" />
-        </div>
-      </div>
+      </section>
 
-      <!-- Transactions -->
-      <div class="card mt">
-        <TopTransactions
-          :transactions="store.dashboard.top_transactions"
-          :availableCategories="availableCategories"
-          :transactionOverrides="transactionOverrides"
-          @refresh="handleOverrideRefresh"
-        />
+      <!-- Graficos: categoria + maiores -->
+      <section>
+        <h2>Gráficos</h2>
+        <div class="grid2">
+          <div class="card">
+            <h3>Gasto por categoria (casa completa)</h3>
+            <p class="cap">Cartão + fixos. Barras <span class="amber-text">âmbar</span> = categoria com contas fixas.</p>
+            <div class="bars">
+              <div v-for="c in categories" :key="c.name" class="bar-row">
+                <div class="name" :title="c.name">{{ c.name }}<span v-if="fixoCategories.has(c.name)" class="fx"> ·fixo</span></div>
+                <div class="bar-track" :title="`${c.name}: ${fmt(c.net_total)} — ${c.transaction_count} lanç.`">
+                  <div class="bar-fill" :class="{ amber: fixoCategories.has(c.name) }" :style="{ width: pctOf(num(c.net_total), catMax) + '%' }" />
+                  <span v-if="pctOf(num(c.net_total), catMax) > 34" class="bar-val inside" :style="{ right: `calc(${100 - pctOf(num(c.net_total), catMax)}% + 8px)` }">{{ fmt(c.net_total) }} · {{ c.percentage.toFixed(0) }}%</span>
+                  <span v-else class="bar-val outside" :style="{ left: `calc(${pctOf(num(c.net_total), catMax)}% + 8px)` }">{{ fmt(c.net_total) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Maiores lançamentos (cartão)</h3>
+            <p class="cap">As 5 maiores compras da fatura.</p>
+            <div v-if="topTransactions.length" class="bars">
+              <div v-for="t in topTransactions" :key="t.id" class="bar-row">
+                <div class="name" :title="t.description">{{ t.description }}</div>
+                <div class="bar-track" :title="`${t.description}: ${fmt(t.amount)}`">
+                  <div class="bar-fill" :style="{ width: pctOf(num(t.amount), topMax) + '%' }" />
+                  <span v-if="pctOf(num(t.amount), topMax) > 34" class="bar-val inside" :style="{ right: `calc(${100 - pctOf(num(t.amount), topMax)}% + 8px)` }">{{ fmt(t.amount) }}</span>
+                  <span v-else class="bar-val outside" :style="{ left: `calc(${pctOf(num(t.amount), topMax)}% + 8px)` }">{{ fmt(t.amount) }}</span>
+                </div>
+              </div>
+            </div>
+            <p v-else class="cap">Sem lançamentos de cartão.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Dia da semana + parcelas -->
+      <section v-if="weekTotal > 0 || installments.length">
+        <div class="grid2">
+          <div class="card" v-if="weekTotal > 0">
+            <h3>Gasto por dia da semana (cartão)</h3>
+            <p class="cap">Fim de semana concentra <b>{{ weekendPct.toFixed(0) }}%</b> do gasto de cartão da semana.</p>
+            <div class="dow">
+              <div v-for="(v, i) in weekday" :key="i" class="dow-col">
+                <div class="dow-v">{{ kBRL(v) }}</div>
+                <div class="dow-bar" :class="{ peak: v === weekdayMax && v > 0 }" :style="{ height: Math.max((v / weekdayMax) * 150, 4) + 'px' }" :title="`${WD_LABELS[i]}: ${fmt(v)}`" />
+                <div class="dow-lbl">{{ WD_LABELS[i] }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" v-if="installments.length">
+            <h3>Carga de parcelamento</h3>
+            <p class="cap">Parcelas ativas neste mês. O que já está travado para os próximos meses.</p>
+            <div class="bars">
+              <div v-for="(it, i) in installments" :key="i" class="bar-row">
+                <div class="name" :title="it.description">{{ it.description }} <span class="inst-tag">{{ it.current }}/{{ it.total }}</span></div>
+                <div class="bar-track" :title="`${it.description}: ${fmt(it.amount)}`">
+                  <div class="bar-fill amber" :style="{ width: pctOf(num(it.amount), instMax) + '%' }" />
+                  <span v-if="pctOf(num(it.amount), instMax) > 40" class="bar-val inside" :style="{ right: `calc(${100 - pctOf(num(it.amount), instMax)}% + 8px)` }">{{ fmt(it.amount) }}</span>
+                  <span v-else class="bar-val outside" :style="{ left: `calc(${pctOf(num(it.amount), instMax)}% + 8px)` }">{{ fmt(it.amount) }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="inst-foot">
+              <div><span>Parcelas neste mês</span><b>{{ fmt(monthParcelas) }}</b></div>
+              <div><span>Restante já contratado</span><b class="amber-text">{{ fmt(futureParcelas) }}</b></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sugestões de economia -->
+      <section v-if="suggestions.length">
+        <h2>Sugestões de economia</h2>
+        <div class="saves">
+          <div v-for="(s, i) in suggestions" :key="i" :class="['save', 'pri-' + s.pri]">
+            <div class="st"><h4>{{ s.title }}</h4><span class="tag">{{ s.tag }}</span></div>
+            <p>{{ s.body }}</p>
+            <div class="impact">{{ s.impact }}</div>
+          </div>
+        </div>
+        <div v-if="hasPotential" class="card total-save">
+          <div class="ts-head">
+            <h3>Potencial total de economia</h3>
+            <b class="ts-val">{{ fmt0(potentialMin) }} – {{ fmt0(potentialMax) }} / mês</b>
+          </div>
+          <p>Estimativa somando as alavancas acima. Concentrado nos fixos anômalos (água + energia) e no controle de impulso e assinaturas do cartão.</p>
+        </div>
+      </section>
+
+      <div class="foot-note">
+        Valores líquidos (débitos − estornos). Fixos e receitas vêm de <strong>Receitas &amp; Fixos</strong> e não passam pelo cartão. Sugestões geradas automaticamente a partir dos seus dados.
       </div>
     </template>
 
-    <!-- Empty state -->
-    <div v-else-if="!store.loading && store.invoices.length === 0" class="empty-state">
+    <!-- Empty -->
+    <div v-else-if="!store.loading && !store.hasData" class="empty">
       <div class="empty-icon">📂</div>
-      <h2>Nenhuma fatura importada</h2>
-      <p>Importe uma fatura BTG para visualizar seu dashboard de gastos.</p>
-      <p class="empty-hint">O arquivo deve estar sem proteção por senha.</p>
+      <h2 class="empty-h">Comece a acompanhar suas finanças</h2>
+      <p>Importe uma fatura BTG ou cadastre receitas e despesas fixas.</p>
+      <p class="hint">Vá em <strong>Receitas &amp; Fixos</strong> para adicionar salário, aluguel, energia e mais.</p>
     </div>
   </div>
 </template>
 
 <style scoped>
-.page {
-  padding: 1.5rem 2rem;
-  max-width: 1200px;
+/* alias global tokens → local names (so dark mode flows through) */
+.dash {
+  --ink: var(--clr-text-primary);
+  --ink-2: var(--clr-text-secondary);
+  --ink-3: var(--clr-text-muted);
+  --line: var(--clr-stroke);
+  --surface: var(--clr-surface);
+  --surface-2: var(--clr-surface-alt);
+  --accent: var(--clr-accent);
+  --accent-soft: var(--clr-accent-light);
+  --amber: var(--clr-amber);
+  --amber-soft: var(--clr-amber-soft);
+  --red: var(--clr-negative);
+  --red-soft: var(--clr-red-soft);
+  --track: var(--clr-track);
+  --radius: var(--radius-lg);
+  --shadow: var(--shadow-sm);
+
+  padding: 1.75rem 2rem 4rem;
+  max-width: 1160px;
   margin: 0 auto;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Header */
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.25rem;
-}
-.page-title { display: flex; align-items: baseline; gap: 0.75rem; }
-h1 { font-size: 1.25rem; font-weight: 600; color: var(--clr-text-primary); letter-spacing: -0.01em; }
-.period-badge {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--clr-text-secondary);
-  background: var(--clr-stroke-soft);
-  padding: 0.2rem 0.6rem;
-  border-radius: 100px;
-  border: 1px solid var(--clr-stroke);
-}
+.top { margin-bottom: 1.25rem; }
+.top-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.top-actions { display: flex; align-items: center; gap: 0.75rem; }
+.eyebrow { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 6px; }
+h1 { font-size: clamp(22px, 3vw, 32px); line-height: 1.1; letter-spacing: -.02em; font-weight: 800; color: var(--ink); }
+.period { font-size: 12px; font-weight: 600; color: var(--ink-2); background: var(--surface-2); padding: 3px 10px; border-radius: 100px; }
+.month-select { font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; outline: none; }
+.month-select:focus { border-color: var(--accent); }
 
-/* Month filter badge */
-.filter-badge {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.5rem 1rem;
-  background: var(--clr-accent-light);
-  border: 1px solid rgba(0,120,212,0.25);
-  border-radius: var(--radius-md);
-  font-size: 0.8125rem;
-  color: var(--clr-accent);
-  margin-bottom: 0.75rem;
-}
+/* Password modal */
+.pw-overlay { position: fixed; inset: 0; background: rgba(20,33,30,.45); display: flex; align-items: center; justify-content: center; z-index: 200; }
+.pw-modal { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px; width: min(420px, 92vw); }
+.pw-modal h3 { font-size: 17px; font-weight: 800; color: var(--ink); margin-bottom: 6px; }
+.pw-sub { font-size: 13px; color: var(--ink-2); margin-bottom: 16px; }
+.pw-input { width: 100%; font-family: inherit; font-size: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); outline: none; }
+.pw-input:focus { border-color: var(--accent); }
+.pw-remember { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--ink-2); cursor: pointer; user-select: none; }
+.pw-remember input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.pw-err { margin-top: 10px; font-size: 12.5px; color: var(--red); }
+.pw-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.pw-btn { font-family: inherit; font-size: 13px; font-weight: 700; padding: 8px 16px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+.pw-btn.primary { background: var(--accent); color: #fff; }
+.pw-btn.primary:disabled { opacity: .5; cursor: default; }
+.pw-btn.ghost { background: var(--surface); border-color: var(--line); color: var(--ink-2); }
+.sub { color: var(--ink-2); margin-top: 10px; max-width: 72ch; font-size: 14px; }
+.sub b { color: var(--ink); font-weight: 700; }
+
+section { margin-top: 2rem; }
+h2 { font-size: 12px; letter-spacing: .10em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; margin-bottom: 1rem; display: flex; align-items: center; gap: 10px; }
+h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+/* KPIs */
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 16px 14px; box-shadow: var(--shadow); }
+.kpi .lbl { font-size: 12px; color: var(--ink-2); font-weight: 600; margin-bottom: 6px; }
+.kpi .val { font-size: 23px; font-weight: 800; letter-spacing: -.02em; line-height: 1.05; }
+.kpi .foot { font-size: 11.5px; color: var(--ink-3); margin-top: 6px; }
+.flag { border-left: 3px solid var(--line); }
+.flag-ok { border-left-color: var(--accent); }
+.flag-amber { border-left-color: var(--amber); }
+.flag-red { border-left-color: var(--red); }
+.ok-text { color: var(--accent); }
+.red-text { color: var(--red); }
+.amber-text { color: var(--amber); font-weight: 700; }
+.pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-top: 8px; }
+.pill.warn { background: var(--amber-soft); color: var(--amber); }
+.pill.bad { background: var(--red-soft); color: var(--red); }
+
+/* Cards + grid */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }
+.card h3 { font-size: 15px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 3px; color: var(--ink); }
+.card .cap { font-size: 12px; color: var(--ink-3); margin-bottom: 16px; }
+.card .cap b { color: var(--ink-2); }
+
+/* Composition split */
+.split { display: flex; height: 40px; border-radius: 8px; overflow: hidden; gap: 2px; background: var(--track); }
+.seg { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 700; min-width: 3px; white-space: nowrap; overflow: hidden; }
+.seg-card { background: var(--accent); }
+.seg-fixo { background: var(--amber); }
+.legend { display: flex; gap: 18px; margin-top: 12px; font-size: 12.5px; color: var(--ink-2); flex-wrap: wrap; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.dot-card { background: var(--accent); }
+.dot-fixo { background: var(--amber); }
+.note { margin-top: 16px; font-size: 12.5px; color: var(--ink-3); }
+.note b { color: var(--ink-2); }
+
+/* Fix list */
+.fixlist { display: flex; flex-direction: column; }
+.fixrow { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.fixrow:last-child { border-bottom: none; }
+.fixrow .fn { color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
+.fixrow .fn.hot { color: var(--red); }
+.fixrow b { font-weight: 700; color: var(--ink); }
+.fixrow.tot { font-weight: 800; }
+.fixrow.tot .fn, .fixrow.tot b { color: var(--ink); font-weight: 800; }
+.badge-hot { font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; background: var(--red-soft); color: var(--red); }
+
+/* Bars */
+.bars { display: flex; flex-direction: column; gap: 10px; }
+.bar-row { display: grid; grid-template-columns: 130px 1fr; gap: 12px; align-items: center; }
+.bar-row .name { font-size: 13px; color: var(--ink-2); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-row .name .fx { color: var(--amber); font-weight: 700; }
+.inst-tag { color: var(--ink-3); font-weight: 600; }
+.bar-track { position: relative; background: var(--track); border-radius: 5px; height: 26px; }
+.bar-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 5px; min-width: 3px; }
+.bar-fill.amber { background: var(--amber); }
+.bar-val { position: absolute; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.bar-val.inside { color: #fff; }
+.bar-val.outside { color: var(--ink-2); }
+
+/* Weekday columns */
+.dow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; align-items: end; height: 200px; margin-top: 4px; }
+.dow-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px; height: 100%; }
+.dow-v { font-size: 11px; color: var(--ink-2); font-weight: 700; }
+.dow-bar { width: 100%; background: var(--accent); border-radius: 5px 5px 3px 3px; min-height: 4px; }
+.dow-bar.peak { background: var(--amber); }
+.dow-lbl { font-size: 12px; color: var(--ink-3); font-weight: 600; }
+
+/* Installment footer */
+.inst-foot { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.inst-foot div { display: flex; justify-content: space-between; font-size: 13px; }
+.inst-foot span { color: var(--ink-2); }
+.inst-foot b { font-weight: 700; }
+
+/* Savings */
+.saves { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.save { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 18px 16px; box-shadow: var(--shadow); border-top: 3px solid var(--accent); }
+.save.pri-red { border-top-color: var(--red); }
+.save.pri-amber { border-top-color: var(--amber); }
+.save.pri-accent { border-top-color: var(--accent); }
+.save .st { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.save h4 { font-size: 15px; font-weight: 700; color: var(--ink); }
+.save .tag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); white-space: nowrap; }
+.save p { margin-bottom: 8px; font-size: 13.5px; color: var(--ink-2); }
+.save .impact { font-size: 13px; font-weight: 700; color: var(--accent); }
+.save.pri-red .impact { color: var(--red); }
+.save.pri-amber .impact { color: var(--amber); }
+.total-save { margin-top: 14px; border-top: 3px solid var(--accent); }
+.ts-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ts-head h3 { margin: 0; }
+.ts-val { font-size: 20px; font-weight: 800; color: var(--accent); white-space: nowrap; }
+.total-save p { margin-top: 8px; font-size: 13px; color: var(--ink-2); }
+
+/* Filter / messages */
+.filter-badge { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 1rem; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 8px; font-size: 13px; color: var(--accent); margin-top: 1rem; }
 .filter-badge strong { font-weight: 700; }
-.clear-filter {
-  background: none;
-  border: 1px solid rgba(0,120,212,0.3);
-  border-radius: var(--radius-sm);
-  color: var(--clr-accent);
-  cursor: pointer;
-  font-size: 0.75rem;
-  font-weight: 600;
-  font-family: var(--font-body);
-  padding: 0.2rem 0.6rem;
-  transition: background 0.1s;
-}
-.clear-filter:hover { background: rgba(0,120,212,0.1); }
+.clear-filter { background: none; border: 1px solid var(--accent); border-radius: 5px; color: var(--accent); cursor: pointer; font-size: 12px; font-weight: 600; padding: 2px 9px; }
+.msg-error { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-top: 1rem; background: var(--red-soft); color: var(--red); border: 1px solid var(--red); }
 
-/* Message bar */
-.msg-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 1rem;
-  border-radius: var(--radius-md);
-  font-size: 0.8125rem;
-  margin-bottom: 1rem;
-}
-.msg-bar--error {
-  background: #fde7e9;
-  border: 1px solid #f1707b;
-  color: var(--clr-negative);
-}
-.msg-icon { font-style: normal; }
+/* Loading */
+.loading { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 1.5rem; }
+.shimmer { height: 88px; border-radius: var(--radius); background: linear-gradient(90deg, var(--surface-2) 25%, var(--track) 50%, var(--surface-2) 75%); background-size: 200% 100%; animation: sh 1.4s infinite; }
+@keyframes sh { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-/* KPI row */
-.kpi-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-.kpi-card {
-  background: var(--clr-surface);
-  border: 1px solid var(--clr-stroke);
-  border-radius: var(--radius-lg);
-  padding: 1rem 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.15s;
-}
-.kpi-card:hover { box-shadow: var(--shadow-md); }
-.kpi-label {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: var(--clr-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.kpi-value {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--clr-text-primary);
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-}
-.kpi-value--large { font-size: 1.5rem; font-weight: 700; }
-.kpi-value--positive { color: var(--clr-positive); }
-.kpi-sub {
-  font-size: 0.6875rem;
-  color: var(--clr-text-muted);
-}
-
-/* Card wrapper */
-.card {
-  background: var(--clr-surface);
-  border: 1px solid var(--clr-stroke);
-  border-radius: var(--radius-lg);
-  padding: 1.25rem 1.5rem;
-  box-shadow: var(--shadow-sm);
-}
-.mt { margin-top: 0.75rem; }
-
-/* Charts */
-.charts-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-}
-
-/* Shimmer loading */
-.loading-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
-.shimmer {
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
-  border-radius: var(--radius-lg);
-}
-.kpi-shimmer { height: 80px; }
-@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-
-/* Empty state */
-.empty-state {
-  text-align: center;
-  padding: 5rem 2rem;
-  color: var(--clr-text-secondary);
-}
+/* Footer + empty */
+.foot-note { margin-top: 2rem; font-size: 12px; color: var(--ink-3); border-top: 1px solid var(--line); padding-top: 14px; }
+.empty { text-align: center; padding: 5rem 2rem; color: var(--ink-2); }
 .empty-icon { font-size: 3rem; margin-bottom: 1rem; }
-.empty-state h2 { font-size: 1.125rem; font-weight: 600; color: var(--clr-text-primary); margin-bottom: 0.5rem; }
-.empty-state p { font-size: 0.875rem; }
-.empty-hint { font-size: 0.75rem; color: var(--clr-text-muted); margin-top: 0.25rem; }
+.empty-h { font-size: 1.125rem; font-weight: 700; color: var(--ink); margin-bottom: 0.5rem; }
+.empty-h::after { display: none; }
+.empty .hint { font-size: 0.8125rem; color: var(--ink-3); margin-top: 0.4rem; }
+
+@media (max-width: 900px) {
+  .kpis { grid-template-columns: 1fr 1fr; }
+  .grid2, .saves { grid-template-columns: 1fr; }
+  .loading { grid-template-columns: 1fr 1fr; }
+  .bar-row { grid-template-columns: 100px 1fr; }
+}
 </style>

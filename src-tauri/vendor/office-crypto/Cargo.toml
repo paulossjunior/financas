@@ -1,0 +1,29 @@
+# Vendored from office-crypto 0.2.0 (MIT, Udbhav Muthakana),
+# patched to support agile encryption with SHA1/SHA256/SHA384 hashes and
+# AES-128/192/256 key sizes (BTG invoices use agile + SHA1 + AES-128).
+[package]
+edition = "2021"
+name = "office-crypto"
+version = "0.2.0"
+authors = ["Udbhav Muthakana"]
+description = "Pure Rust library to decrypt password-protected MS Office files (vendored + patched)"
+license = "MIT"
+
+[lib]
+name = "office_crypto"
+path = "src/lib.rs"
+
+[dependencies]
+aes = "0.8.2"
+base64 = "0.22.1"
+bytemuck = "1.24.0"
+cbc = { version = "0.1.2", features = ["block-padding"] }
+derivative = "2.2.0"
+ecb = "0.1.2"
+md-5 = "0.10.6"
+packed_struct = "0.10.1"
+quick-xml = "0.38.4"
+rc4 = "0.1.0"
+sha1 = "0.10.5"
+sha2 = "0.10.6"
+thiserror = "2.0.17"
