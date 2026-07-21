@@ -4,9 +4,11 @@ import type {
   DashboardData,
   DashboardFilter,
   EntryKind,
+  BankEntry,
   ImportResult,
   InflationData,
   InvoiceInfo,
+  StatementPreview,
   ManualEntry,
   Payslip,
   Transaction,
@@ -101,6 +103,48 @@ export async function getInflation(): Promise<InflationData> {
 export async function fetchIpca(): Promise<InflationData> {
   try {
     return await invoke<InflationData>("fetch_ipca");
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+/** Bank statement (.xls) — preview what will be imported vs excluded (no save). */
+export async function previewBankStatement(path: string): Promise<StatementPreview> {
+  try {
+    return await invoke<StatementPreview>("preview_bank_statement", { path });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+/** Import the statement's included entries (dedup). Returns how many were saved. */
+export async function importBankStatement(path: string): Promise<number> {
+  try {
+    return await invoke<number>("import_bank_statement", { path });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function listBankEntries(): Promise<BankEntry[]> {
+  try {
+    return await invoke<BankEntry[]>("list_bank_entries");
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function removeBankEntry(id: string): Promise<void> {
+  try {
+    await invoke<void>("remove_bank_entry", { id });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function clearBankEntries(): Promise<void> {
+  try {
+    await invoke<void>("clear_bank_entries");
   } catch (e) {
     throw new Error(mapError(String(e)));
   }

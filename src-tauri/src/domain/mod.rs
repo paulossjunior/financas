@@ -1,3 +1,4 @@
+pub mod bank_statement;
 pub mod category;
 pub mod categorizer;
 pub mod dashboard;
@@ -9,6 +10,7 @@ pub mod payslip;
 pub mod transaction;
 pub mod year;
 
+pub use bank_statement::{classify_entry, entry_id, holder_key, parse_statement_rows, BankEntry, ClassifiedEntry, ParsedStatement, RawEntry};
 pub use category::{aggregate_by_category, Category, TransactionSummary};
 pub use categorizer::{CategoryRule, Categorizer};
 pub use dashboard::{compute_dashboard, DashboardData, DashboardFilter};

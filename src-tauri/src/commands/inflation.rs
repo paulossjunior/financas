@@ -18,8 +18,12 @@ fn category_weights(
     config: &State<'_, Mutex<AppConfig>>,
     db: &State<'_, SharedDb>,
 ) -> Result<Vec<(String, Decimal)>, String> {
-    let manual = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
-    let payslips = db.lock().map_err(|e| e.to_string())?.load_payslips().unwrap_or_default();
+    let mut manual = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
+    let (payslips, bank) = {
+        let d = db.lock().map_err(|e| e.to_string())?;
+        (d.load_payslips().unwrap_or_default(), d.load_bank_entries().unwrap_or_default())
+    };
+    manual.extend(bank.iter().map(|b| b.to_manual_entry()));
     let store_lock = store.lock().map_err(|e| e.to_string())?;
     match get_dashboard(&store_lock, &manual, &payslips, DashboardFilter::default()) {
         Ok(d) => Ok(d

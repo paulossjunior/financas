@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/007-inflation-explainer/plan.md
+at specs/008-bank-statement-import/plan.md
 <!-- SPECKIT END -->
 
 ## Project overview
