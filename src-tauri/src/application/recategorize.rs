@@ -79,6 +79,7 @@ mod tests {
                 CategoryRule { keywords: vec!["NETFLIX".into()], category: "Lazer".into(), priority: 20 },
             ],
             transaction_overrides: HashMap::new(),
+            manual_entries: vec![],
         };
 
         let changed = recategorize_invoices(&store, &config);
@@ -106,6 +107,7 @@ mod tests {
                 CategoryRule { keywords: vec!["AMAZON".into()], category: "Compras".into(), priority: 10 },
             ],
             transaction_overrides: overrides,
+            manual_entries: vec![],
         };
 
         let changed = recategorize_invoices(&store, &config);

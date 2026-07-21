@@ -30,6 +30,8 @@ pub struct ImportResult {
 pub enum ImportError {
     #[error("ENCRYPTED_FILE")]
     Encrypted,
+    #[error("WRONG_PASSWORD")]
+    WrongPassword,
     #[error("INVALID_FORMAT:{0}")]
     InvalidFormat(String),
     #[error("FILE_NOT_FOUND")]
@@ -42,13 +44,15 @@ pub fn import_invoice(
     path: &Path,
     store: &mut InvoiceStore,
     config: &AppConfig,
+    password: Option<&str>,
 ) -> Result<ImportResult, ImportError> {
     if !path.exists() {
         return Err(ImportError::FileNotFound);
     }
 
-    let sheet = parse_xlsx(path).map_err(|e| match e {
+    let sheet = parse_xlsx(path, password).map_err(|e| match e {
         ParseError::Encrypted => ImportError::Encrypted,
+        ParseError::WrongPassword => ImportError::WrongPassword,
         ParseError::InvalidFormat(s) => ImportError::InvalidFormat(s),
         ParseError::IoError(s) => ImportError::ParseError(s),
         ParseError::EmptySheet => ImportError::ParseError("Planilha vazia".into()),
@@ -153,9 +157,10 @@ mod tests {
             faturas_directory: "faturas".into(),
             category_rules: vec![],
             transaction_overrides: HashMap::new(),
+            manual_entries: vec![],
         };
         let mut store = InvoiceStore::new();
-        import_invoice(&fixture, &mut store, &no_override_config).expect("first import failed");
+        import_invoice(&fixture, &mut store, &no_override_config, None).expect("first import failed");
         let invoices = store.list();
         assert!(!invoices.is_empty());
         let first_tx_id = invoices[0].transactions[0].id.to_string();
@@ -167,9 +172,10 @@ mod tests {
             faturas_directory: "faturas".into(),
             category_rules: vec![],
             transaction_overrides: overrides,
+            manual_entries: vec![],
         };
         let mut store2 = InvoiceStore::new();
-        import_invoice(&fixture, &mut store2, &override_config).expect("second import failed");
+        import_invoice(&fixture, &mut store2, &override_config, None).expect("second import failed");
 
         let invoices2 = store2.list();
         let actual_category = &invoices2[0].transactions[0].category;

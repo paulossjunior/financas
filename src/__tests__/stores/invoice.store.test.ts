@@ -66,19 +66,28 @@ describe("invoice.store", () => {
     const store = useInvoiceStore();
     const results = await store.importInvoices(["/path/fatura.xlsx"]);
 
-    expect(mockImport).toHaveBeenCalledWith(["/path/fatura.xlsx"]);
+    expect(mockImport).toHaveBeenCalledWith(["/path/fatura.xlsx"], undefined, undefined);
     expect(results).toEqual([result]);
     expect(store.invoices).toHaveLength(1);
     expect(store.invoices[0].id).toBe("inv-1");
   });
 
-  it("importInvoices sets error on failure", async () => {
+  it("importInvoices sets error on generic failure", async () => {
+    mockImport.mockRejectedValue(new Error("PARSE_ERROR: falha"));
+    mockList.mockResolvedValue([]);
+    const store = useInvoiceStore();
+
+    await expect(store.importInvoices(["/path/x.xlsx"])).rejects.toThrow();
+    expect(store.error).toBe("PARSE_ERROR: falha");
+  });
+
+  it("importInvoices does not surface ENCRYPTED_FILE in the error bar", async () => {
     mockImport.mockRejectedValue(new Error("ENCRYPTED_FILE"));
     mockList.mockResolvedValue([]);
     const store = useInvoiceStore();
 
-    await expect(store.importInvoices(["/path/encrypted.xlsx"])).rejects.toThrow();
-    expect(store.error).toBe("ENCRYPTED_FILE");
+    await expect(store.importInvoices(["/path/encrypted.xlsx"])).rejects.toThrow("ENCRYPTED_FILE");
+    expect(store.error).toBeNull();
   });
 
   it("removeInvoice calls service and refreshes list", async () => {
@@ -98,10 +107,20 @@ describe("invoice.store", () => {
       total_charged: "1000.00",
       total_reversals: "0.00",
       net_total: "1000.00",
+      total_card_net: "1000.00",
+      total_manual_expense: "0",
+      total_income: "0",
+      balance: "-1000.00",
       invoice_count: 1,
       categories: [],
       top_transactions: [],
       monthly_trend: [],
+      weekday_spending: ["0","0","0","0","0","0","0"],
+      installments: [],
+      installments_month_total: "0",
+      installments_future_total: "0",
+      subscriptions: [],
+      subscriptions_total: "0",
     };
     mockGetDashboard.mockResolvedValue(dash);
 
@@ -130,6 +149,9 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "2026-03", to: "2026-05" },
         total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
         invoice_count: 3, categories: [], top_transactions: [],
         monthly_trend: [
           { month: "2026-03", net_total: "500.00", categories: [] },
@@ -155,6 +177,9 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "2026-05", to: "2026-05" },
         total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
         invoice_count: 1, categories: [], top_transactions: [],
         monthly_trend: [{ month: "2026-05", net_total: "1234.56", categories: [] }],
       } as DashboardData);
@@ -174,6 +199,9 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "2026-05", to: "2026-05" },
         total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
         invoice_count: 2, categories: [], top_transactions: [], monthly_trend: [],
       } as DashboardData);
 
@@ -192,6 +220,9 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "", to: "" },
         total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
         invoice_count: 0, categories: [], top_transactions: [], monthly_trend: [],
       } as DashboardData);
 
@@ -213,6 +244,9 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "2026-05", to: "2026-05" },
         total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
         invoice_count: 1, categories: [], top_transactions: [], monthly_trend: [],
       } as DashboardData);
 
@@ -231,6 +265,9 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "2026-05", to: "2026-05" },
         total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
         invoice_count: 1, categories: [], top_transactions: [], monthly_trend: [],
       } as DashboardData);
 
@@ -257,6 +294,9 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "", to: "" },
         total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
         invoice_count: 0, categories: [], top_transactions: [], monthly_trend: [],
       } as DashboardData);
       mockRemove.mockResolvedValue(undefined);
@@ -278,6 +318,9 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "", to: "" },
         total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
         invoice_count: 1, categories: [], top_transactions: [], monthly_trend: [],
       } as DashboardData);
       mockRemove.mockResolvedValue(undefined);

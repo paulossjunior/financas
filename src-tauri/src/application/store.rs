@@ -40,6 +40,11 @@ impl InvoiceStore {
         list
     }
 
+    /// Owned, sorted snapshot of all invoices — used to persist to the database.
+    pub fn list_owned(&self) -> Vec<Invoice> {
+        self.list().into_iter().cloned().collect()
+    }
+
     pub fn for_each_transaction_mut<F>(&mut self, mut f: F) -> usize
     where
         F: FnMut(&mut crate::domain::Transaction) -> bool,
@@ -82,6 +87,15 @@ pub type SharedStore = Arc<Mutex<InvoiceStore>>;
 
 pub fn new_shared_store() -> SharedStore {
     Arc::new(Mutex::new(InvoiceStore::new()))
+}
+
+/// Build a store preloaded with invoices (e.g. loaded from the database on startup).
+pub fn shared_store_with(invoices: Vec<Invoice>) -> SharedStore {
+    let mut store = InvoiceStore::new();
+    for inv in invoices {
+        store.invoices.insert(inv.id, inv);
+    }
+    Arc::new(Mutex::new(store))
 }
 
 #[cfg(test)]

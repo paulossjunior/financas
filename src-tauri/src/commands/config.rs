@@ -1,8 +1,8 @@
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::State;
 
 use crate::domain::AppConfig;
-use crate::infrastructure::config_store::ConfigStore;
+use crate::infrastructure::db::{persist_config, SharedDb};
 
 #[tauri::command]
 pub async fn get_config(config: State<'_, Mutex<AppConfig>>) -> Result<AppConfig, String> {
@@ -13,16 +13,9 @@ pub async fn get_config(config: State<'_, Mutex<AppConfig>>) -> Result<AppConfig
 pub async fn save_config(
     new_config: AppConfig,
     config: State<'_, Mutex<AppConfig>>,
-    app: tauri::AppHandle,
+    db: State<'_, SharedDb>,
 ) -> Result<(), String> {
-    let config_path = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("config.json");
-
-    let store = ConfigStore::new(config_path);
-    store.save(&new_config)?;
+    persist_config(&db, &new_config)?;
     *config.lock().map_err(|e| e.to_string())? = new_config;
     Ok(())
 }

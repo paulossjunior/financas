@@ -3,8 +3,10 @@ import type {
   AppConfig,
   DashboardData,
   DashboardFilter,
+  EntryKind,
   ImportResult,
   InvoiceInfo,
+  ManualEntry,
   Transaction,
 } from "@/types/api.types";
 
@@ -28,9 +30,35 @@ function mapError(raw: string): string {
   return `Erro inesperado: ${raw}`;
 }
 
-export async function importInvoices(paths: string[]): Promise<ImportResult[]> {
+export async function importInvoices(
+  paths: string[],
+  password?: string,
+  remember?: boolean
+): Promise<ImportResult[]> {
   try {
-    return await invoke<ImportResult[]>("import_invoices", { paths });
+    return await invoke<ImportResult[]>("import_invoices", { paths, password, remember });
+  } catch (e) {
+    const raw = String(e);
+    // Preserve these codes so the UI can prompt for a password.
+    if (raw.includes("ENCRYPTED_FILE")) throw new Error("ENCRYPTED_FILE");
+    if (raw.includes("WRONG_PASSWORD")) throw new Error("WRONG_PASSWORD");
+    throw new Error(mapError(raw));
+  }
+}
+
+/** Whether an invoice password is saved in the OS keychain. */
+export async function hasSavedPassword(): Promise<boolean> {
+  try {
+    return await invoke<boolean>("has_saved_password");
+  } catch {
+    return false;
+  }
+}
+
+/** Forget the saved invoice password. */
+export async function clearSavedPassword(): Promise<void> {
+  try {
+    await invoke<void>("clear_saved_password");
   } catch (e) {
     throw new Error(mapError(String(e)));
   }
@@ -76,6 +104,15 @@ export async function recategorizeInvoices(): Promise<number> {
   return invoke<number>("recategorize_invoices_cmd");
 }
 
+/** Add a keyword to a category and recategorize all invoices. Returns changed count. */
+export async function addCategoryKeyword(keyword: string, category: string): Promise<number> {
+  try {
+    return await invoke<number>("add_category_keyword", { keyword, category });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
 export async function overrideTransactionCategory(
   transactionId: string,
   category: string
@@ -98,6 +135,52 @@ export async function removeTransactionOverride(transactionId: string): Promise<
 export async function getAllTransactions(): Promise<Transaction[]> {
   try {
     return await invoke<Transaction[]>("list_all_transactions");
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+// ── Manual entries (income & fixed expenses outside the credit card) ──
+
+export interface ManualEntryInput {
+  kind: EntryKind;
+  description: string;
+  amount: string;
+  category: string;
+  month: string;
+  recurring: boolean;
+}
+
+export async function listManualEntries(): Promise<ManualEntry[]> {
+  try {
+    return await invoke<ManualEntry[]>("list_manual_entries");
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function addManualEntry(input: ManualEntryInput): Promise<ManualEntry> {
+  try {
+    return await invoke<ManualEntry>("add_manual_entry", { ...input });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function updateManualEntry(
+  id: string,
+  input: ManualEntryInput
+): Promise<ManualEntry> {
+  try {
+    return await invoke<ManualEntry>("update_manual_entry", { id, ...input });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function removeManualEntry(id: string): Promise<void> {
+  try {
+    await invoke<void>("remove_manual_entry", { id });
   } catch (e) {
     throw new Error(mapError(String(e)));
   }

@@ -20,7 +20,7 @@ fn test_parse_btg_fixture_returns_transactions() {
     let path = fixture_path();
     assert!(path.exists(), "Fixture not found: {}", path.display());
 
-    let sheet = parse_xlsx(&path).expect("parse_xlsx failed");
+    let sheet = parse_xlsx(&path, None).expect("parse_xlsx failed");
     let categorizer = Categorizer::with_defaults();
     let invoice_id = Uuid::new_v4();
 
@@ -35,7 +35,7 @@ fn test_parse_btg_fixture_returns_transactions() {
 #[test]
 fn test_fixture_transactions_have_valid_dates() {
     let path = fixture_path();
-    let sheet = parse_xlsx(&path).unwrap();
+    let sheet = parse_xlsx(&path, None).unwrap();
     let categorizer = Categorizer::with_defaults();
     let invoice_id = Uuid::new_v4();
     let (txs, _) = map_sheet_to_transactions(&sheet, invoice_id, &categorizer).unwrap();
@@ -49,7 +49,7 @@ fn test_fixture_transactions_have_valid_dates() {
 #[test]
 fn test_fixture_categories_inferred() {
     let path = fixture_path();
-    let sheet = parse_xlsx(&path).unwrap();
+    let sheet = parse_xlsx(&path, None).unwrap();
     let categorizer = Categorizer::with_defaults();
     let invoice_id = Uuid::new_v4();
     let (txs, _) = map_sheet_to_transactions(&sheet, invoice_id, &categorizer).unwrap();
@@ -66,7 +66,7 @@ fn test_fixture_categories_inferred() {
 #[test]
 fn test_fixture_reversal_detected() {
     let path = fixture_path();
-    let sheet = parse_xlsx(&path).unwrap();
+    let sheet = parse_xlsx(&path, None).unwrap();
     let categorizer = Categorizer::with_defaults();
     let invoice_id = Uuid::new_v4();
     let (txs, _) = map_sheet_to_transactions(&sheet, invoice_id, &categorizer).unwrap();
@@ -79,7 +79,7 @@ fn test_fixture_reversal_detected() {
 #[test]
 fn test_fixture_installment_parsed_from_description() {
     let path = fixture_path();
-    let sheet = parse_xlsx(&path).unwrap();
+    let sheet = parse_xlsx(&path, None).unwrap();
     let categorizer = Categorizer::with_defaults();
     let invoice_id = Uuid::new_v4();
     let (txs, _) = map_sheet_to_transactions(&sheet, invoice_id, &categorizer).unwrap();
@@ -101,6 +101,6 @@ fn test_encrypted_file_returns_error() {
     ];
     let tmp = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(tmp.path(), &encrypted_bytes).unwrap();
-    let result = parse_xlsx(tmp.path());
+    let result = parse_xlsx(tmp.path(), None);
     assert!(matches!(result, Err(ParseError::Encrypted)), "Expected Encrypted error");
 }
