@@ -50,7 +50,10 @@ async function handleRemoveInvoice(invoiceId: string): Promise<void> {
 <template>
   <div class="page">
     <div class="page-header">
-      <h1>Histórico</h1>
+      <div>
+        <h1>Faturas</h1>
+        <span class="faturas-sub">Gerencie as faturas importadas — clique num mês para filtrar, ou remova uma fatura.</span>
+      </div>
       <div class="page-actions">
         <ImportButton @import-requested="handleImport" />
       </div>
@@ -96,11 +99,13 @@ async function handleRemoveInvoice(invoiceId: string): Promise<void> {
 
 .page-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 1rem;
   margin-bottom: 1.25rem;
 }
 h1 { font-size: 1.25rem; font-weight: 600; color: var(--clr-text-primary); letter-spacing: -0.01em; }
+.faturas-sub { display: block; margin-top: 4px; font-size: 0.8125rem; color: var(--clr-text-secondary); max-width: 60ch; }
 
 .msg-bar {
   display: flex;
