@@ -4,7 +4,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 use chrono::{NaiveDate, NaiveDateTime};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
@@ -125,6 +125,11 @@ impl Database {
                     FOREIGN KEY (payslip_id) REFERENCES payslips(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_pitems_payslip ON payslip_items(payslip_id);
+                CREATE TABLE IF NOT EXISTS inflation_cache (
+                    id         INTEGER PRIMARY KEY CHECK (id = 1),
+                    payload    TEXT NOT NULL,
+                    fetched_at TEXT NOT NULL
+                );
                 ",
             )
             .map_err(|e| e.to_string())?;
@@ -556,6 +561,26 @@ impl Database {
         .map_err(|e| e.to_string())?;
         tx.execute("DELETE FROM payslips WHERE month = ?1", params![month]).map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())
+    }
+
+    /// Upsert the single-row inflation index cache (JSON payload + fetch timestamp).
+    pub fn save_inflation_cache(&self, payload: &str, fetched_at: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO inflation_cache (id, payload, fetched_at) VALUES (1, ?1, ?2)
+                 ON CONFLICT(id) DO UPDATE SET payload = ?1, fetched_at = ?2",
+                params![payload, fetched_at],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Load the cached inflation payload (JSON), or None if never fetched.
+    pub fn load_inflation_cache(&self) -> Result<Option<String>, String> {
+        self.conn
+            .query_row("SELECT payload FROM inflation_cache WHERE id = 1", [], |r| r.get::<_, String>(0))
+            .optional()
+            .map_err(|e| e.to_string())
     }
 }
 
