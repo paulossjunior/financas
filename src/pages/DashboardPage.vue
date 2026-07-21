@@ -7,9 +7,8 @@ import ImportWarnings from "@/components/import/ImportWarnings.vue";
 import ReportOverlay from "@/components/report/ReportOverlay.vue";
 import CategoryTreemap from "@/components/dashboard/CategoryTreemap.vue";
 import CardForecastChart from "@/components/dashboard/CardForecastChart.vue";
-import InflationCard from "@/components/dashboard/InflationCard.vue";
-import type { Category, ManualEntry, ParseWarning, Payslip } from "@/types/api.types";
-import { listPayslips } from "@/services/tauri.service";
+import type { Category, InflationData, ManualEntry, ParseWarning, Payslip } from "@/types/api.types";
+import { listPayslips, getInflation, fetchIpca } from "@/services/tauri.service";
 
 const store = useInvoiceStore();
 const settingsStore = useSettingsStore();
@@ -131,6 +130,34 @@ const forecastNextSum = computed(() => forecastPoints.value.reduce((a, p) => a +
 function fcMonth(ym: string): string {
   const [y, m] = ym.split("-");
   return `${MONTHS[parseInt(m, 10) - 1] ?? m}/${y}`;
+}
+
+// ── Inflação (IPCA + pessoal) — cache local; fetch só no botão do header ──
+const inflation = ref<InflationData | null>(null);
+const inflLoading = ref(false);
+const inflError = ref<string | null>(null);
+const inflAvailable = computed(() => !!inflation.value?.available);
+const inflPersonal = computed(() => num(inflation.value?.personal_month));
+const inflDiff = computed(() => num(inflation.value?.personal_diff));
+const inflIpcaMonth = computed(() => num(inflation.value?.headline?.month ?? "0"));
+const inflRef = computed(() => {
+  const rm = inflation.value?.headline?.ref_month;
+  if (!rm) return "";
+  const [y, m] = rm.split("-");
+  return `${MONTHS[parseInt(m, 10) - 1] ?? m}/${y}`;
+});
+function pctBR(v: number): string {
+  return v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
+}
+async function loadInflation(): Promise<void> {
+  try { inflation.value = await getInflation(); } catch { /* sem cache ainda */ }
+}
+async function refreshInflation(): Promise<void> {
+  inflLoading.value = true;
+  inflError.value = null;
+  try { inflation.value = await fetchIpca(); }
+  catch (e) { inflError.value = e instanceof Error ? e.message : String(e); }
+  finally { inflLoading.value = false; }
 }
 
 // ── Drill-down: click a category to list its expenses (card + fixos + avulsos + folha) ──
@@ -311,6 +338,7 @@ onMounted(async () => {
   try { payslips.value = await listPayslips(); } catch { /* ignore */ }
   try { await store.loadAllTransactions(); } catch { /* ignore */ }
   if (store.hasData) await store.loadDashboard();
+  await loadInflation();
 });
 
 // Quick add: one-off debit/credit for the selected month (freelance, an unexpected bill…).
@@ -518,6 +546,7 @@ function refLabel(): string {
           <span v-else-if="d" class="period">{{ periodLabel() }}</span>
           <button class="qa-btn" @click="toggleQuick">+ Lançamento avulso</button>
           <button v-if="d" class="qa-btn" @click="reportOpen = true">📄 Relatório</button>
+          <button class="qa-btn" :disabled="inflLoading" @click="refreshInflation">↻ {{ inflLoading ? "Atualizando…" : "Atualizar índices" }}</button>
           <ImportButton @import-requested="handleImport" />
         </div>
       </div>
@@ -648,7 +677,18 @@ function refLabel(): string {
             <div class="val">{{ fmt(moradia.net_total) }}</div>
             <div class="foot">{{ moradia.percentage.toFixed(0) }}% do total</div>
           </div>
+          <div v-if="inflAvailable" class="kpi">
+            <p class="lbl">Sua inflação (mês)</p>
+            <div class="val" :class="inflDiff > 0 ? 'red-text' : 'ok-text'">{{ pctBR(inflPersonal) }}</div>
+            <div class="foot">{{ inflDiff > 0 ? "+" : inflDiff < 0 ? "−" : "" }}{{ Math.abs(inflDiff).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} p.p. vs IPCA</div>
+          </div>
+          <div v-if="inflAvailable" class="kpi">
+            <p class="lbl">IPCA (mês)</p>
+            <div class="val">{{ pctBR(inflIpcaMonth) }}</div>
+            <div class="foot">ref. {{ inflRef }}</div>
+          </div>
         </div>
+        <p v-if="inflError" class="cap" style="color: var(--red)">⚠ {{ inflError }}</p>
       </section>
 
       <!-- Fixo x variavel -->
@@ -784,9 +824,6 @@ function refLabel(): string {
       <section>
         <h2>Gráficos</h2>
         <div class="grid2">
-          <div class="card">
-            <InflationCard compact />
-          </div>
           <div class="card" v-if="hasForecast">
             <h3>Próximos meses do cartão</h3>
             <p class="cap">Compromisso já assumido pelos parcelamentos (independe do mês filtrado).</p>
