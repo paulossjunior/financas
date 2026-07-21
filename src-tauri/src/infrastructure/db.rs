@@ -8,6 +8,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
+use crate::domain::bank_statement::BankEntry;
 use crate::domain::invoice::{Invoice, YearMonth};
 use crate::domain::manual_entry::{EntryKind, ManualEntry};
 use crate::domain::payslip::{Payslip, PayslipItem};
@@ -129,6 +130,17 @@ impl Database {
                     id         INTEGER PRIMARY KEY CHECK (id = 1),
                     payload    TEXT NOT NULL,
                     fetched_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS bank_entries (
+                    id           TEXT PRIMARY KEY,
+                    bank         TEXT NOT NULL,
+                    account      TEXT NOT NULL,
+                    date         TEXT NOT NULL,
+                    month        TEXT NOT NULL,
+                    description  TEXT NOT NULL,
+                    category     TEXT NOT NULL,
+                    amount       TEXT NOT NULL,
+                    kind         TEXT NOT NULL
                 );
                 ",
             )
@@ -581,6 +593,60 @@ impl Database {
             .query_row("SELECT payload FROM inflation_cache WHERE id = 1", [], |r| r.get::<_, String>(0))
             .optional()
             .map_err(|e| e.to_string())
+    }
+
+    /// Upsert bank-statement entries (dedup by deterministic id → no re-import dupes).
+    pub fn save_bank_entries(&mut self, entries: &[BankEntry]) -> Result<(), String> {
+        let tx = self.conn.transaction().map_err(|e| e.to_string())?;
+        for e in entries {
+            tx.execute(
+                "INSERT INTO bank_entries (id, bank, account, date, month, description, category, amount, kind)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)
+                 ON CONFLICT(id) DO UPDATE SET category = ?7, amount = ?8, kind = ?9",
+                params![e.id, e.bank, e.account, e.date, e.month, e.description, e.category, e.amount.to_string(), e.kind],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    pub fn load_bank_entries(&self) -> Result<Vec<BankEntry>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, bank, account, date, month, description, category, amount, kind FROM bank_entries ORDER BY date")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(BankEntry {
+                    id: r.get(0)?,
+                    bank: r.get(1)?,
+                    account: r.get(2)?,
+                    date: r.get(3)?,
+                    month: r.get(4)?,
+                    description: r.get(5)?,
+                    category: r.get(6)?,
+                    amount: parse_money("bank_entries.amount", &r.get::<_, String>(7)?),
+                    kind: r.get(8)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    pub fn remove_bank_entry(&mut self, id: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM bank_entries WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn clear_bank_entries(&mut self) -> Result<(), String> {
+        self.conn.execute("DELETE FROM bank_entries", []).map_err(|e| e.to_string())?;
+        Ok(())
     }
 }
 
