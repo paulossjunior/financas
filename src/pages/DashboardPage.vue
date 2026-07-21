@@ -6,6 +6,7 @@ import ImportButton from "@/components/import/ImportButton.vue";
 import ImportWarnings from "@/components/import/ImportWarnings.vue";
 import ReportOverlay from "@/components/report/ReportOverlay.vue";
 import CategoryTreemap from "@/components/dashboard/CategoryTreemap.vue";
+import CardForecastChart from "@/components/dashboard/CardForecastChart.vue";
 import type { Category, ManualEntry, ParseWarning, Payslip } from "@/types/api.types";
 import { listPayslips } from "@/services/tauri.service";
 
@@ -119,6 +120,12 @@ const genDate = computed(() => new Date().toLocaleDateString("pt-BR"));
 const avulsoExpenses = computed(() => avulsoList.value.filter((e) => e.kind === "expense"));
 const topCats = computed(() => categories.value.slice(0, 8));
 const treemapItems = computed(() => categories.value.map((c) => ({ name: c.name, value: num(c.net_total) })));
+
+// Card forecast (installment commitment ahead) — from all invoices, filter-independent.
+const forecastPoints = computed(() => d.value?.forecast_next ?? []);
+const forecastTotal = computed(() => num(d.value?.forecast_committed_total));
+const forecastLast = computed(() => d.value?.forecast_last_month || "");
+const hasForecast = computed(() => forecastPoints.value.some((p) => num(p.amount) > 0));
 
 // ── Drill-down: click a category to list its expenses (card + fixos + avulsos + folha) ──
 const expandedCat = ref<string | null>(null);
@@ -756,6 +763,16 @@ function refLabel(): string {
       <section>
         <h2>Gráficos</h2>
         <div class="grid2">
+          <div class="card" v-if="hasForecast">
+            <h3>Próximos meses do cartão</h3>
+            <p class="cap">Compromisso já assumido pelos parcelamentos (independe do mês filtrado).</p>
+            <div class="fc-kpis">
+              <div><span class="l">Total ainda a pagar</span><b>{{ fmt(forecastTotal) }}</b></div>
+              <div v-if="forecastLast"><span class="l">Termina em</span><b>{{ formatMonthFilter(forecastLast) }}</b></div>
+            </div>
+            <CardForecastChart :points="forecastPoints" compact />
+          </div>
+
           <div class="card">
             <h3>Mapa de gastos (treemap)</h3>
             <p class="cap">Cada retângulo é uma categoria; a área é proporcional ao valor. Passe o mouse para o total.</p>
@@ -1160,6 +1177,9 @@ h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .src.avul { background: color-mix(in srgb, #8b5cf6 20%, transparent); color: #8b5cf6; }
 .src.folha, .src.rev { background: color-mix(in srgb, var(--red) 16%, transparent); color: var(--red); }
 .drill-empty { font-size: 12.5px; color: var(--ink-3); padding: 10px 13px; margin: 0; }
+.fc-kpis { display: flex; gap: 26px; margin-bottom: 12px; flex-wrap: wrap; }
+.fc-kpis .l { display: block; font-size: 11.5px; color: var(--ink-2); font-weight: 600; }
+.fc-kpis b { font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
 
 /* Weekday columns */
 .dow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; align-items: end; height: 200px; margin-top: 4px; }

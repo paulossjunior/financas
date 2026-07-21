@@ -1,6 +1,7 @@
 pub mod category;
 pub mod categorizer;
 pub mod dashboard;
+pub mod forecast;
 pub mod invoice;
 pub mod manual_entry;
 pub mod payslip;
@@ -10,6 +11,7 @@ pub mod year;
 pub use category::{aggregate_by_category, Category, TransactionSummary};
 pub use categorizer::{CategoryRule, Categorizer};
 pub use dashboard::{compute_dashboard, DashboardData, DashboardFilter};
+pub use forecast::{compute_card_forecast, forecast_committed_total, forecast_last_month, ForecastItem, ForecastPoint};
 pub use invoice::{Invoice, YearMonth};
 pub use manual_entry::{EntryKind, ManualEntry};
 pub use payslip::{parse_payslip_text, Payslip, PayslipItem};
