@@ -14,6 +14,9 @@ import type {
   Payslip,
   Transaction,
   YearSummary,
+  RecurringCategoryInfo,
+  RecurringSuggestion,
+  DerivedFixed,
 } from "@/types/api.types";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -316,6 +319,58 @@ export async function listPayslips(): Promise<Payslip[]> {
 export async function removePayslip(month: string): Promise<void> {
   try {
     await invoke<void>("remove_payslip", { month });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+// ── Recurring categories (feature 010) ──
+
+export async function listRecurringCategories(): Promise<RecurringCategoryInfo[]> {
+  try {
+    return await invoke<RecurringCategoryInfo[]>("list_recurring_categories");
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function setCategoryRecurring(
+  category: string,
+  recurring: boolean,
+  startMonth?: string | null,
+  endMonth?: string | null,
+): Promise<void> {
+  try {
+    await invoke<void>("set_category_recurring", {
+      category,
+      recurring,
+      startMonth: startMonth ?? null,
+      endMonth: endMonth ?? null,
+    });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function recurringSuggestions(): Promise<RecurringSuggestion[]> {
+  try {
+    return await invoke<RecurringSuggestion[]>("recurring_suggestions");
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function dismissRecurringSuggestion(target: string): Promise<void> {
+  try {
+    await invoke<void>("dismiss_recurring_suggestion", { target });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function listFixedExpenses(month: string): Promise<DerivedFixed[]> {
+  try {
+    return await invoke<DerivedFixed[]>("list_fixed_expenses", { month });
   } catch (e) {
     throw new Error(mapError(String(e)));
   }
