@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::category::{aggregate_by_category, Category};
 use super::invoice::Invoice;
 use super::manual_entry::{EntryKind, ManualEntry};
+use super::payslip::Payslip;
 use super::transaction::Transaction;
 
 /// One month of the year view. Amounts are decimal strings (exact money on the JS side).
@@ -60,6 +61,7 @@ pub struct YearSummary {
 pub fn compute_year_summary(
     invoices: &[Invoice],
     manual: &[ManualEntry],
+    payslips: &[Payslip],
     year_from: Option<i32>,
     year_to: Option<i32>,
 ) -> YearSummary {
@@ -72,6 +74,11 @@ pub fn compute_year_summary(
     }
     for e in manual {
         if let Some(y) = year_of(&e.month) {
+            years.insert(y);
+        }
+    }
+    for p in payslips {
+        if let Some(y) = year_of(&p.month) {
             years.insert(y);
         }
     }
@@ -101,15 +108,26 @@ pub fn compute_year_summary(
         }
     }
 
-    // Scope = every month with card activity, plus each in-year manual entry's own month.
+    // Payslips (in-year) keyed by month — the real net income overrides the manual salary.
+    let payslip_by_month: BTreeMap<String, &Payslip> = payslips
+        .iter()
+        .filter(|p| in_year(&p.month))
+        .map(|p| (p.month.clone(), p))
+        .collect();
+
+    // Scope = every month with card activity, plus each in-year manual entry / payslip month.
     let mut scope: BTreeSet<String> = card_by.keys().cloned().collect();
     for e in manual {
         if in_year(&e.month) {
             scope.insert(e.month.clone());
         }
     }
+    for m in payslip_by_month.keys() {
+        scope.insert(m.clone());
+    }
 
-    // Expand manual entries over the scope.
+    // Expand manual entries over the scope. A payslip supersedes the manual *salary* income
+    // for its month (avoid double counting); non-salary manual income (e.g. bolsa) still adds.
     let mut income_by: BTreeMap<String, Decimal> = BTreeMap::new();
     let mut fixed_by: BTreeMap<String, Decimal> = BTreeMap::new();
     let mut manual_expense_txs: Vec<Transaction> = Vec::new();
@@ -123,13 +141,22 @@ pub fn compute_year_summary(
         };
         for m in months {
             match e.kind {
-                EntryKind::Income => *income_by.entry(m).or_insert(dec!(0)) += e.amount,
+                EntryKind::Income => {
+                    let superseded = e.is_salary && payslip_by_month.contains_key(&m);
+                    if !superseded {
+                        *income_by.entry(m).or_insert(dec!(0)) += e.amount;
+                    }
+                }
                 EntryKind::Expense => {
                     *fixed_by.entry(m.clone()).or_insert(dec!(0)) += e.amount;
                     manual_expense_txs.push(e.to_transaction(&m));
                 }
             }
         }
+    }
+    // Real net income from payslips per month.
+    for (m, p) in &payslip_by_month {
+        *income_by.entry(m.clone()).or_insert(dec!(0)) += p.net;
     }
 
     // Per-month points, chronological (BTreeSet iterates sorted).
@@ -159,15 +186,29 @@ pub fn compute_year_summary(
         });
     }
 
-    // Card ceiling: recurring salary − recurring fixed costs (monthly, year-independent).
-    let salary_month: Decimal = manual
+    // Card ceiling base. When payslips exist, the most recent one is the current pay:
+    //   renda recorrente = líquido do payslip + receitas recorrentes não-salário (bolsa)
+    //   só salário       = salary_liq do payslip (base permanente, sem CD/bônus)
+    // Without payslips, fall back to the manual recurring income.
+    let recurring_nonsalary: Decimal = manual
         .iter()
-        .filter(|e| e.kind == EntryKind::Income && e.recurring)
+        .filter(|e| e.kind == EntryKind::Income && e.recurring && !e.is_salary)
         .fold(dec!(0), |a, e| a + e.amount);
-    let salary_only: Decimal = manual
-        .iter()
-        .filter(|e| e.kind == EntryKind::Income && e.recurring && e.is_salary)
-        .fold(dec!(0), |a, e| a + e.amount);
+    let latest_payslip = payslips.iter().max_by(|a, b| a.month.cmp(&b.month));
+    let (salary_month, salary_only) = match latest_payslip {
+        Some(p) => (p.net + recurring_nonsalary, p.salary_liq),
+        None => {
+            let all: Decimal = manual
+                .iter()
+                .filter(|e| e.kind == EntryKind::Income && e.recurring)
+                .fold(dec!(0), |a, e| a + e.amount);
+            let sal: Decimal = manual
+                .iter()
+                .filter(|e| e.kind == EntryKind::Income && e.recurring && e.is_salary)
+                .fold(dec!(0), |a, e| a + e.amount);
+            (all, sal)
+        }
+    };
     let fixed_month: Decimal = manual
         .iter()
         .filter(|e| e.kind == EntryKind::Expense && e.recurring)
@@ -259,7 +300,7 @@ mod tests {
     fn groups_card_by_transaction_date() {
         // Two charges in different months, even from one invoice.
         let inv = invoice_with(&[("2026-05-10", dec!(100)), ("2026-06-02", dec!(200))]);
-        let y = compute_year_summary(&[inv], &[], None, None);
+        let y = compute_year_summary(&[inv], &[], &[], None, None);
         assert_eq!(y.months.len(), 2);
         assert_eq!(y.months[0].month, "2026-05");
         assert_eq!(y.months[0].card, "100");
@@ -274,7 +315,7 @@ mod tests {
             entry(EntryKind::Expense, dec!(2950), "Moradia & Serviços", "2026-06", true),
             entry(EntryKind::Income, dec!(8000), "Salário", "2026-06", true),
         ];
-        let y = compute_year_summary(&[inv], &manual, None, None);
+        let y = compute_year_summary(&[inv], &manual, &[], None, None);
         // 2 scope months → recurring counts twice.
         assert_eq!(y.fixed_total, "5900"); // 2950 * 2
         assert_eq!(y.income_total, "16000"); // 8000 * 2
@@ -302,7 +343,7 @@ mod tests {
             bolsa,
             entry(EntryKind::Expense, dec!(10590), "Fixos", "2026-06", true),
         ];
-        let y = compute_year_summary(&[inv], &manual, None, None);
+        let y = compute_year_summary(&[inv], &manual, &[], None, None);
         assert_eq!(y.salary_month, "15500"); // all recurring income
         assert_eq!(y.salary_only, "11000"); // only salary-flagged income
         assert_eq!(y.card_ceiling, "4910"); // 15500 − 10590
@@ -317,7 +358,7 @@ mod tests {
             entry(EntryKind::Income, dec!(5000), "Bônus", "2026-06", false),  // one-off, ignored
             entry(EntryKind::Expense, dec!(4000), "Aluguel", "2026-06", true), // fixed > salary
         ];
-        let y = compute_year_summary(&[inv], &manual, None, None);
+        let y = compute_year_summary(&[inv], &manual, &[], None, None);
         assert_eq!(y.salary_month, "3000"); // one-off bônus excluded
         assert_eq!(y.fixed_month, "4000");
         assert_eq!(y.card_ceiling, "0"); // floored at 0 (fixed exceed salary)
@@ -327,7 +368,7 @@ mod tests {
     fn income_appears_per_month_not_as_category() {
         let inv = invoice_with(&[("2026-06-10", dec!(500))]);
         let manual = vec![entry(EntryKind::Income, dec!(9000), "Salário", "2026-06", true)];
-        let y = compute_year_summary(&[inv], &manual, None, None);
+        let y = compute_year_summary(&[inv], &manual, &[], None, None);
         assert_eq!(y.months[0].income, "9000");
         assert!(y.categories.iter().all(|c| c.name != "Salário"));
     }
@@ -335,18 +376,18 @@ mod tests {
     #[test]
     fn no_income_gives_zero_savings_rate() {
         let inv = invoice_with(&[("2026-06-10", dec!(500))]);
-        let y = compute_year_summary(&[inv], &[], None, None);
+        let y = compute_year_summary(&[inv], &[], &[], None, None);
         assert_eq!(y.savings_rate, 0.0);
     }
 
     #[test]
     fn year_filter_restricts_to_that_year_and_lists_all_years() {
         let inv = invoice_with(&[("2025-12-10", dec!(200)), ("2026-03-10", dec!(500))]);
-        let all = compute_year_summary(&[inv.clone()], &[], None, None);
+        let all = compute_year_summary(&[inv.clone()], &[], &[], None, None);
         assert_eq!(all.available_years, vec![2026, 2025]); // desc, unaffected by filter
         assert_eq!(all.months.len(), 2);
 
-        let only26 = compute_year_summary(&[inv], &[], Some(2026), Some(2026));
+        let only26 = compute_year_summary(&[inv], &[], &[], Some(2026), Some(2026));
         assert_eq!(only26.months.len(), 1);
         assert_eq!(only26.months[0].month, "2026-03");
         assert_eq!(only26.card_total, "500");
