@@ -504,26 +504,28 @@ function refLabel(): string {
     <!-- Header -->
     <header class="top">
       <div class="top-row">
-        <div>
+        <div class="top-title">
           <p class="eyebrow">Análise de despesas domésticas · Casa + Cartão BTG</p>
           <h1>Custo total da casa{{ titleSuffix() ? " " + titleSuffix() : "" }}</h1>
         </div>
         <div class="top-actions">
-          <select
-            v-if="availableMonths.length"
-            class="month-select"
-            :value="store.monthFilter ?? ''"
-            @change="onMonthChange"
-            title="Filtrar por mês"
-          >
-            <option value="">Todos os meses</option>
-            <option v-for="m in availableMonths" :key="m" :value="m">{{ formatMonthFilter(m) }}</option>
-          </select>
-          <div v-if="showAvgToggle" class="avg-toggle" role="group" aria-label="Total ou média">
-            <button type="button" :class="{ active: !avgMode }" @click="avgMode = false">Total</button>
-            <button type="button" :class="{ active: avgMode }" @click="avgMode = true">Média/mês</button>
+          <div class="period-ctx">
+            <select
+              v-if="availableMonths.length"
+              class="month-select"
+              :value="store.monthFilter ?? ''"
+              @change="onMonthChange"
+              title="Filtrar por mês"
+            >
+              <option value="">Todos os meses</option>
+              <option v-for="m in availableMonths" :key="m" :value="m">{{ formatMonthFilter(m) }}</option>
+            </select>
+            <div v-if="showAvgToggle" class="avg-toggle" role="group" aria-label="Total ou média">
+              <button type="button" :class="{ active: !avgMode }" @click="avgMode = false">Total</button>
+              <button type="button" :class="{ active: avgMode }" @click="avgMode = true">Média/mês</button>
+            </div>
+            <span v-else-if="d" class="period">{{ periodLabel() }}</span>
           </div>
-          <span v-else-if="d" class="period">{{ periodLabel() }}</span>
           <div class="qa-group">
             <button class="qa-btn primary" @click="toggleQuick">+ Lançamento avulso</button>
             <button v-if="d" class="qa-btn" @click="reportOpen = true">📄 Relatório</button>
@@ -599,74 +601,96 @@ function refLabel(): string {
       <!-- Indicadores -->
       <section>
         <h2>Indicadores</h2>
-        <div class="kpis">
-          <div :class="['kpi', 'flag', balancePositive ? 'flag-ok' : 'flag-red']">
+        <!-- Story KPIs: saldo, receitas, custo total — read first -->
+        <div class="kpis kpis-lead">
+          <div :class="['kpi', 'kpi-lead', 'flag', balancePositive ? 'flag-ok' : 'flag-red']">
             <p class="lbl">Saldo {{ scopeWord }}</p>
             <div class="val" :class="balancePositive ? 'ok-text' : 'red-text'">{{ fmt(balance) }}</div>
             <div class="foot" v-if="savingsRate !== null">{{ balancePositive ? "sobra" : "déficit" }} · {{ Math.abs(savingsRate).toFixed(0) }}% da receita</div>
             <div class="foot" v-else>cadastre receitas para ver o saldo</div>
           </div>
-          <div class="kpi">
+          <div class="kpi kpi-lead flag flag-ok">
             <p class="lbl">Receitas</p>
-            <div class="val ok-text">{{ fmt(income) }}</div>
+            <div class="val ok-text" :class="{ muted: income === 0 }">{{ fmt(income) }}</div>
             <div class="foot">salário bruto, bolsas, rendimentos</div>
           </div>
-          <div v-if="hasPayslip" class="kpi">
-            <p class="lbl">Salário líquido</p>
-            <div class="val ok-text">{{ fmt(salaryNet) }}</div>
-            <div class="foot">do contracheque</div>
-          </div>
-          <div v-if="hasPayslip" class="kpi flag flag-amber">
-            <p class="lbl">Descontos do salário</p>
-            <div class="val">{{ fmt(salaryDed) }}</div>
-            <div class="foot">FUNPRESP, GEAP, PSS, IR</div>
-          </div>
-          <div v-if="bonusLiq > 0" class="kpi">
-            <p class="lbl">Bônus + renda extra</p>
-            <div class="val ok-text">{{ fmt(bonusLiq) }}</div>
-            <div class="foot">CD, gratificações, bolsa, rendimentos</div>
-          </div>
-          <div class="kpi">
+          <div class="kpi kpi-lead">
             <p class="lbl">Custo total {{ scopeWord }}</p>
-            <div class="val">{{ fmt(expense) }}</div>
+            <div class="val" :class="{ muted: expense === 0 }">{{ fmt(expense) }}</div>
             <div class="foot">cartão {{ fmt0(cardNet) }} + fixos {{ fmt0(fixo) }}<template v-if="variableExpense > 0"> + avulsos {{ fmt0(variableExpense) }}</template><template v-if="payrollDed > 0"> + descontos {{ fmt0(payrollDed) }}</template></div>
           </div>
-          <div class="kpi">
-            <p class="lbl">Contas fixas {{ scopeWord }}</p>
-            <div class="val">{{ fmt(fixo) }}</div>
-            <div class="foot">{{ fixoPct.toFixed(0) }}% das despesas</div>
+        </div>
+
+        <!-- Renda -->
+        <div v-if="hasPayslip || bonusLiq > 0" class="kpi-group">
+          <p class="grp-lbl">Renda</p>
+          <div class="kpis kpis-sub">
+            <div v-if="hasPayslip" class="kpi">
+              <p class="lbl">Salário líquido</p>
+              <div class="val ok-text" :class="{ muted: salaryNet === 0 }">{{ fmt(salaryNet) }}</div>
+              <div class="foot">do contracheque</div>
+            </div>
+            <div v-if="bonusLiq > 0" class="kpi">
+              <p class="lbl">Bônus + renda extra</p>
+              <div class="val ok-text">{{ fmt(bonusLiq) }}</div>
+              <div class="foot">CD, gratificações, bolsa, rendimentos</div>
+            </div>
+            <div v-if="hasPayslip" class="kpi flag flag-amber">
+              <p class="lbl">Descontos do salário</p>
+              <div class="val" :class="{ muted: salaryDed === 0 }">{{ fmt(salaryDed) }}</div>
+              <div class="foot">FUNPRESP, GEAP, PSS, IR</div>
+            </div>
           </div>
-          <div v-if="utilities > 0" :class="['kpi', 'flag', utilitiesHigh ? 'flag-red' : '']">
-            <p class="lbl">Energia + Água</p>
-            <div class="val" :class="utilitiesHigh ? 'red-text' : ''">{{ fmt(utilities) }}</div>
-            <span v-if="utilitiesHigh" class="pill bad">▲ acima do normal</span>
-            <div v-else class="foot">contas de utilidade</div>
+        </div>
+
+        <!-- Despesas -->
+        <div class="kpi-group">
+          <p class="grp-lbl">Despesas</p>
+          <div class="kpis kpis-sub">
+            <div class="kpi">
+              <p class="lbl">Contas fixas {{ scopeWord }}</p>
+              <div class="val" :class="{ muted: fixo === 0 }">{{ fmt(fixo) }}</div>
+              <div class="foot">{{ fixoPct.toFixed(0) }}% das despesas</div>
+            </div>
+            <div v-if="utilities > 0" :class="['kpi', 'flag', utilitiesHigh ? 'flag-red' : '']">
+              <p class="lbl">Energia + Água</p>
+              <div class="val" :class="utilitiesHigh ? 'red-text' : ''">{{ fmt(utilities) }}</div>
+              <span v-if="utilitiesHigh" class="pill bad">▲ acima do normal</span>
+              <div v-else class="foot">contas de utilidade</div>
+            </div>
+            <div v-if="futureParcelas > 0" class="kpi flag flag-amber">
+              <p class="lbl">Comprometido em parcelas</p>
+              <div class="val">{{ fmt(futureParcelas) }}</div>
+              <span class="pill warn">◆ trava caixa futuro</span>
+            </div>
+            <div :class="['kpi', 'flag', outrosPct >= 35 ? 'flag-amber' : '']">
+              <p class="lbl">Não categorizado</p>
+              <div class="val" :class="{ muted: outrosPct === 0 }">{{ outrosPct.toFixed(1) }}%</div>
+              <span v-if="outrosPct >= 35" class="pill warn">◆ visibilidade</span>
+              <div v-else class="foot">em "Outros"</div>
+            </div>
+            <div v-if="moradia" class="kpi">
+              <p class="lbl">Moradia</p>
+              <div class="val">{{ fmt(moradia.net_total) }}</div>
+              <div class="foot">{{ moradia.percentage.toFixed(0) }}% do total</div>
+            </div>
           </div>
-          <div v-if="futureParcelas > 0" class="kpi flag flag-amber">
-            <p class="lbl">Comprometido em parcelas</p>
-            <div class="val">{{ fmt(futureParcelas) }}</div>
-            <span class="pill warn">◆ trava caixa futuro</span>
-          </div>
-          <div :class="['kpi', 'flag', outrosPct >= 35 ? 'flag-amber' : '']">
-            <p class="lbl">Não categorizado</p>
-            <div class="val">{{ outrosPct.toFixed(1) }}%</div>
-            <span v-if="outrosPct >= 35" class="pill warn">◆ visibilidade</span>
-            <div v-else class="foot">em "Outros"</div>
-          </div>
-          <div v-if="moradia" class="kpi">
-            <p class="lbl">Moradia</p>
-            <div class="val">{{ fmt(moradia.net_total) }}</div>
-            <div class="foot">{{ moradia.percentage.toFixed(0) }}% do total</div>
-          </div>
-          <div v-if="inflAvailable" class="kpi">
-            <p class="lbl">Sua inflação (mês)</p>
-            <div class="val" :class="inflDiff > 0 ? 'red-text' : 'ok-text'">{{ pctBR(inflPersonal) }}</div>
-            <div class="foot">{{ inflDiff > 0 ? "+" : inflDiff < 0 ? "−" : "" }}{{ Math.abs(inflDiff).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} p.p. vs IPCA</div>
-          </div>
-          <div v-if="inflAvailable" class="kpi">
-            <p class="lbl">IPCA (mês)</p>
-            <div class="val">{{ pctBR(inflIpcaMonth) }}</div>
-            <div class="foot">ref. {{ inflRef }}</div>
+        </div>
+
+        <!-- Inflação -->
+        <div v-if="inflAvailable" class="kpi-group">
+          <p class="grp-lbl">Inflação</p>
+          <div class="kpis kpis-sub">
+            <div class="kpi">
+              <p class="lbl">Sua inflação (mês)</p>
+              <div class="val" :class="inflDiff > 0 ? 'red-text' : 'ok-text'">{{ pctBR(inflPersonal) }}</div>
+              <div class="foot">{{ inflDiff > 0 ? "+" : inflDiff < 0 ? "−" : "" }}{{ Math.abs(inflDiff).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} p.p. vs IPCA</div>
+            </div>
+            <div class="kpi">
+              <p class="lbl">IPCA (mês)</p>
+              <div class="val">{{ pctBR(inflIpcaMonth) }}</div>
+              <div class="foot">ref. {{ inflRef }}</div>
+            </div>
           </div>
         </div>
         <p v-if="inflError" class="cap" style="color: var(--red)">⚠ {{ inflError }}</p>
@@ -1074,19 +1098,21 @@ function refLabel(): string {
 
 /* Header */
 .top { margin-bottom: 1.25rem; }
-.top-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-.top-actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.top-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem 1.25rem; flex-wrap: wrap; }
+.top-title { flex: 1 1 auto; min-width: 240px; }
+.top-actions { display: flex; align-items: center; gap: 0.5rem 0.9rem; flex-wrap: wrap; margin-left: auto; }
+.period-ctx { display: inline-flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .qa-group { display: inline-flex; align-items: center; gap: 0.5rem; margin-left: auto; flex-wrap: wrap; }
 .eyebrow { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 6px; }
 h1 { font-size: clamp(22px, 3vw, 32px); line-height: 1.1; letter-spacing: -.02em; font-weight: 800; color: var(--ink); }
 .period { font-size: 12px; font-weight: 600; color: var(--ink-2); background: var(--surface-2); padding: 3px 10px; border-radius: 100px; }
-.month-select { font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; outline: none; }
+.month-select { font-family: inherit; font-size: 13px; font-weight: 600; height: 34px; box-sizing: border-box; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; outline: none; }
 .month-select:focus { border-color: var(--accent); }
-.avg-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.avg-toggle button { font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); background: var(--surface); border: none; padding: 6px 11px; cursor: pointer; }
+.avg-toggle { display: inline-flex; height: 34px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.avg-toggle button { font-family: inherit; font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; color: var(--ink-2); background: var(--surface); border: none; padding: 6px 11px; cursor: pointer; }
 .avg-toggle button:hover { background: var(--surface-2); }
 .avg-toggle button.active { background: var(--accent); color: #fff; }
-.qa-btn { font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--accent); background: var(--surface); border: 1px solid var(--accent); border-radius: 8px; padding: 6px 11px; cursor: pointer; white-space: nowrap; }
+.qa-btn { font-family: inherit; font-size: 12.5px; font-weight: 700; height: 34px; box-sizing: border-box; display: inline-flex; align-items: center; color: var(--accent); background: var(--surface); border: 1px solid var(--accent); border-radius: 8px; padding: 6px 11px; cursor: pointer; white-space: nowrap; }
 .qa-btn:hover { background: var(--accent-soft); }
 .qa-btn:disabled { opacity: 0.55; cursor: default; }
 .qa-btn.primary { color: #fff; background: var(--accent); border-color: var(--accent); }
@@ -1132,6 +1158,19 @@ h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .kpi .lbl { font-size: 12px; color: var(--ink-2); font-weight: 600; margin-bottom: 6px; }
 .kpi .val { font-size: 23px; font-weight: 800; letter-spacing: -.02em; line-height: 1.05; }
 .kpi .foot { font-size: 11.5px; color: var(--ink-3); margin-top: 6px; }
+/* Story KPIs — larger, subtle accent frame, land first */
+.kpis-lead { grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.kpi-lead { padding: 20px 22px 18px; border-color: color-mix(in srgb, var(--accent) 22%, var(--line)); }
+.kpi-lead .lbl { font-size: 12.5px; }
+.kpi-lead .val { font-size: 30px; }
+.kpi-lead .foot { font-size: 12px; margin-top: 8px; }
+/* Muted subgroups — related numbers cluster under a quiet label */
+.kpi-group { margin-top: 20px; }
+.grp-lbl { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; margin: 0 0 10px; padding-left: 2px; }
+.kpis-sub .kpi { padding: 14px 15px 12px; }
+.kpis-sub .val { font-size: 20px; }
+/* De-emphasise zero/empty figures so real numbers stand out */
+.val.muted { color: var(--ink-3); font-weight: 600; }
 .flag { border-left: 3px solid var(--line); }
 .flag-ok { border-left-color: var(--accent); }
 .flag-amber { border-left-color: var(--amber); }
@@ -1287,9 +1326,12 @@ h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .empty .hint { font-size: 0.8125rem; color: var(--ink-3); margin-top: 0.4rem; }
 
 @media (max-width: 900px) {
-  .kpis { grid-template-columns: 1fr 1fr; }
+  .kpis, .kpis-lead, .kpis-sub { grid-template-columns: 1fr 1fr; }
   .grid2, .saves { grid-template-columns: 1fr; }
   .loading { grid-template-columns: 1fr 1fr; }
   .bar-row { grid-template-columns: 100px 1fr; }
+}
+@media (max-width: 560px) {
+  .kpis, .kpis-lead, .kpis-sub { grid-template-columns: 1fr; }
 }
 </style>
