@@ -15,6 +15,9 @@ src-tauri/gen/
 faturas/
 tests/fixtures/*.xlsx
 
+# Test artifacts
+test-results/
+
 # OS
 .DS_Store
 Thumbs.db

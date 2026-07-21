@@ -57,8 +57,8 @@ describe("CategoryRanking", () => {
     const wrapper = mount(CategoryRanking, { props: { categories: cats } });
     const option = wrapper.findComponent({ name: "VChart" }).props("option") as any;
     const data = option.series[0].data;
-    expect(data[data.length - 1].itemStyle.color).toBe("#764ba2");
-    expect(data[0].itemStyle.color).toBe("#4299e1");
+    expect(data[data.length - 1].itemStyle.color).toBe("#0078d4");
+    expect(data[0].itemStyle.color).toBe("#c7e0f4");
   });
 
   it("series data length matches categories prop length", () => {

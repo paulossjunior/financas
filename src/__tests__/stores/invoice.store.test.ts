@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
 import { useInvoiceStore } from "@/stores/invoice.store";
 import type { InvoiceInfo, ImportResult, DashboardData } from "@/types/api.types";
+import { nextTick } from "vue";
 
 vi.mock("@/services/tauri.service", () => ({
   importInvoices: vi.fn(),
@@ -65,19 +66,28 @@ describe("invoice.store", () => {
     const store = useInvoiceStore();
     const results = await store.importInvoices(["/path/fatura.xlsx"]);
 
-    expect(mockImport).toHaveBeenCalledWith(["/path/fatura.xlsx"]);
+    expect(mockImport).toHaveBeenCalledWith(["/path/fatura.xlsx"], undefined, undefined);
     expect(results).toEqual([result]);
     expect(store.invoices).toHaveLength(1);
     expect(store.invoices[0].id).toBe("inv-1");
   });
 
-  it("importInvoices sets error on failure", async () => {
+  it("importInvoices sets error on generic failure", async () => {
+    mockImport.mockRejectedValue(new Error("PARSE_ERROR: falha"));
+    mockList.mockResolvedValue([]);
+    const store = useInvoiceStore();
+
+    await expect(store.importInvoices(["/path/x.xlsx"])).rejects.toThrow();
+    expect(store.error).toBe("PARSE_ERROR: falha");
+  });
+
+  it("importInvoices does not surface ENCRYPTED_FILE in the error bar", async () => {
     mockImport.mockRejectedValue(new Error("ENCRYPTED_FILE"));
     mockList.mockResolvedValue([]);
     const store = useInvoiceStore();
 
-    await expect(store.importInvoices(["/path/encrypted.xlsx"])).rejects.toThrow();
-    expect(store.error).toBe("ENCRYPTED_FILE");
+    await expect(store.importInvoices(["/path/encrypted.xlsx"])).rejects.toThrow("ENCRYPTED_FILE");
+    expect(store.error).toBeNull();
   });
 
   it("removeInvoice calls service and refreshes list", async () => {
@@ -97,10 +107,20 @@ describe("invoice.store", () => {
       total_charged: "1000.00",
       total_reversals: "0.00",
       net_total: "1000.00",
+      total_card_net: "1000.00",
+      total_manual_expense: "0",
+      total_income: "0",
+      balance: "-1000.00",
       invoice_count: 1,
       categories: [],
       top_transactions: [],
       monthly_trend: [],
+      weekday_spending: ["0","0","0","0","0","0","0"],
+      installments: [],
+      installments_month_total: "0",
+      installments_future_total: "0",
+      subscriptions: [],
+      subscriptions_total: "0",
     };
     mockGetDashboard.mockResolvedValue(dash);
 
@@ -116,6 +136,202 @@ describe("invoice.store", () => {
     store.error = "some error";
     store.clearError();
     expect(store.error).toBeNull();
+  });
+
+  // ── monthGroups computed ──────────────────────────────────────────────────
+
+  describe("monthGroups", () => {
+    it("groups invoices by month sorted descending", async () => {
+      const inv1 = makeInvoice({ id: "a", month: "2026-03", filename: "mar.xlsx" });
+      const inv2 = makeInvoice({ id: "b", month: "2026-05", filename: "mai.xlsx" });
+      const inv3 = makeInvoice({ id: "c", month: "2026-03", filename: "mar2.xlsx" });
+      mockList.mockResolvedValue([inv1, inv2, inv3]);
+      mockGetDashboard.mockResolvedValue({
+        period: { from: "2026-03", to: "2026-05" },
+        total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
+        invoice_count: 3, categories: [], top_transactions: [],
+        monthly_trend: [
+          { month: "2026-03", net_total: "500.00", categories: [] },
+          { month: "2026-05", net_total: "800.00", categories: [] },
+        ],
+      } as DashboardData);
+
+      const store = useInvoiceStore();
+      await store.refreshInvoices();
+      await store.loadDashboard();
+      await nextTick();
+
+      expect(store.monthGroups).toHaveLength(2);
+      expect(store.monthGroups[0].month).toBe("2026-05");
+      expect(store.monthGroups[0].label).toBe("Maio 2026");
+      expect(store.monthGroups[1].month).toBe("2026-03");
+      expect(store.monthGroups[1].label).toBe("Março 2026");
+      expect(store.monthGroups[1].invoices).toHaveLength(2);
+    });
+
+    it("joins net_total from monthly_trend", async () => {
+      mockList.mockResolvedValue([makeInvoice({ month: "2026-05" })]);
+      mockGetDashboard.mockResolvedValue({
+        period: { from: "2026-05", to: "2026-05" },
+        total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
+        invoice_count: 1, categories: [], top_transactions: [],
+        monthly_trend: [{ month: "2026-05", net_total: "1234.56", categories: [] }],
+      } as DashboardData);
+
+      const store = useInvoiceStore();
+      await store.refreshInvoices();
+      await store.loadDashboard();
+      await nextTick();
+
+      expect(store.monthGroups[0].net_total).toBe("1234.56");
+    });
+
+    it("puts unknown month (0000-00) at end", async () => {
+      const known = makeInvoice({ id: "a", month: "2026-05" });
+      const unknown = makeInvoice({ id: "b", month: "0000-00", filename: "unknown.xlsx" });
+      mockList.mockResolvedValue([unknown, known]);
+      mockGetDashboard.mockResolvedValue({
+        period: { from: "2026-05", to: "2026-05" },
+        total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
+        invoice_count: 2, categories: [], top_transactions: [], monthly_trend: [],
+      } as DashboardData);
+
+      const store = useInvoiceStore();
+      await store.refreshInvoices();
+      await store.loadDashboard();
+      await nextTick();
+
+      const last = store.monthGroups[store.monthGroups.length - 1];
+      expect(last.month).toBe("0000-00");
+      expect(last.label).toBe("Mês desconhecido");
+    });
+
+    it("returns empty array when no invoices", async () => {
+      mockList.mockResolvedValue([]);
+      mockGetDashboard.mockResolvedValue({
+        period: { from: "", to: "" },
+        total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
+        invoice_count: 0, categories: [], top_transactions: [], monthly_trend: [],
+      } as DashboardData);
+
+      const store = useInvoiceStore();
+      await store.refreshInvoices();
+      await store.loadDashboard();
+      await nextTick();
+
+      expect(store.monthGroups).toHaveLength(0);
+    });
+  });
+
+  // ── setMonthFilter ────────────────────────────────────────────────────────
+
+  describe("setMonthFilter", () => {
+    it("sets monthFilter and triggers dashboard reload with invoice_ids filter", async () => {
+      const inv = makeInvoice({ id: "abc-123", month: "2026-05" });
+      mockList.mockResolvedValue([inv]);
+      mockGetDashboard.mockResolvedValue({
+        period: { from: "2026-05", to: "2026-05" },
+        total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
+        invoice_count: 1, categories: [], top_transactions: [], monthly_trend: [],
+      } as DashboardData);
+
+      const store = useInvoiceStore();
+      await store.refreshInvoices();
+      await store.setMonthFilter("2026-05");
+
+      expect(store.monthFilter).toBe("2026-05");
+      expect(mockGetDashboard).toHaveBeenLastCalledWith(
+        expect.objectContaining({ invoice_ids: ["abc-123"] })
+      );
+    });
+
+    it("setMonthFilter(null) clears filter and reloads unfiltered", async () => {
+      mockList.mockResolvedValue([makeInvoice()]);
+      mockGetDashboard.mockResolvedValue({
+        period: { from: "2026-05", to: "2026-05" },
+        total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
+        invoice_count: 1, categories: [], top_transactions: [], monthly_trend: [],
+      } as DashboardData);
+
+      const store = useInvoiceStore();
+      await store.refreshInvoices();
+      await store.setMonthFilter("2026-05");
+      mockGetDashboard.mockClear();
+
+      await store.setMonthFilter(null);
+
+      expect(store.monthFilter).toBeNull();
+      expect(mockGetDashboard).toHaveBeenLastCalledWith(undefined);
+    });
+  });
+
+  // ── removeInvoice auto-clear ──────────────────────────────────────────────
+
+  describe("removeInvoice auto-clear filter", () => {
+    it("clears monthFilter when removed invoice was last in filtered month", async () => {
+      const inv = makeInvoice({ id: "inv-only", month: "2026-05" });
+      mockList
+        .mockResolvedValueOnce([inv])   // initial load
+        .mockResolvedValueOnce([]);     // after remove
+      mockGetDashboard.mockResolvedValue({
+        period: { from: "", to: "" },
+        total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
+        invoice_count: 0, categories: [], top_transactions: [], monthly_trend: [],
+      } as DashboardData);
+      mockRemove.mockResolvedValue(undefined);
+
+      const store = useInvoiceStore();
+      await store.refreshInvoices();
+      store.monthFilter = "2026-05";
+      await store.removeInvoice("inv-only");
+
+      expect(store.monthFilter).toBeNull();
+    });
+
+    it("keeps monthFilter when other invoices remain in that month", async () => {
+      const inv1 = makeInvoice({ id: "inv-1", month: "2026-05" });
+      const inv2 = makeInvoice({ id: "inv-2", month: "2026-05", filename: "b.xlsx" });
+      mockList
+        .mockResolvedValueOnce([inv1, inv2])
+        .mockResolvedValueOnce([inv2]);
+      mockGetDashboard.mockResolvedValue({
+        period: { from: "", to: "" },
+        total_charged: "0", total_reversals: "0", net_total: "0",
+        total_card_net: "0", total_manual_expense: "0", total_income: "0", balance: "0",
+        weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
+        subscriptions: [], subscriptions_total: "0",
+        invoice_count: 1, categories: [], top_transactions: [], monthly_trend: [],
+      } as DashboardData);
+      mockRemove.mockResolvedValue(undefined);
+
+      const store = useInvoiceStore();
+      await store.refreshInvoices();
+      store.monthFilter = "2026-05";
+      await store.removeInvoice("inv-1");
+
+      expect(store.monthFilter).toBe("2026-05");
+    });
   });
 
   it("loading is true during async operation then false after", async () => {

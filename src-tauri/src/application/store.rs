@@ -39,12 +39,63 @@ impl InvoiceStore {
         list.sort_by_key(|i| &i.reference_month);
         list
     }
+
+    /// Owned, sorted snapshot of all invoices — used to persist to the database.
+    pub fn list_owned(&self) -> Vec<Invoice> {
+        self.list().into_iter().cloned().collect()
+    }
+
+    pub fn for_each_transaction_mut<F>(&mut self, mut f: F) -> usize
+    where
+        F: FnMut(&mut crate::domain::Transaction) -> bool,
+    {
+        let mut changed = 0usize;
+        for invoice in self.invoices.values_mut() {
+            for tx in invoice.transactions.iter_mut() {
+                if f(tx) {
+                    changed += 1;
+                }
+            }
+        }
+        changed
+    }
+
+    pub fn list_all_transactions(&self) -> Vec<crate::domain::Transaction> {
+        let mut txs: Vec<crate::domain::Transaction> = self
+            .invoices
+            .values()
+            .flat_map(|inv| inv.transactions.iter().cloned())
+            .collect();
+        txs.sort_by(|a, b| b.date.cmp(&a.date));
+        txs
+    }
+
+    pub fn update_transaction_category(&mut self, tx_id: &str, category: &str) -> bool {
+        for invoice in self.invoices.values_mut() {
+            for tx in invoice.transactions.iter_mut() {
+                if tx.id.to_string() == tx_id {
+                    tx.category = category.to_string();
+                    return true;
+                }
+            }
+        }
+        false
+    }
 }
 
 pub type SharedStore = Arc<Mutex<InvoiceStore>>;
 
 pub fn new_shared_store() -> SharedStore {
     Arc::new(Mutex::new(InvoiceStore::new()))
+}
+
+/// Build a store preloaded with invoices (e.g. loaded from the database on startup).
+pub fn shared_store_with(invoices: Vec<Invoice>) -> SharedStore {
+    let mut store = InvoiceStore::new();
+    for inv in invoices {
+        store.invoices.insert(inv.id, inv);
+    }
+    Arc::new(Mutex::new(store))
 }
 
 #[cfg(test)]
