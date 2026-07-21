@@ -62,7 +62,6 @@ impl Invoice {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDateTime;
 
     fn make_invoice(filename: &str) -> Invoice {
         Invoice::new(
@@ -70,7 +69,7 @@ mod tests {
             YearMonth::new(2026, 5),
             None,
             vec![],
-            NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
+            chrono::DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
         )
     }
 

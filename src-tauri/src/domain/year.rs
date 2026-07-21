@@ -96,7 +96,7 @@ pub fn compute_year_summary(
             Some(v) => v,
             None => return false,
         };
-        year_from.map_or(true, |f| y >= f) && year_to.map_or(true, |t| y <= t)
+        year_from.is_none_or(|f| y >= f) && year_to.is_none_or(|t| y <= t)
     };
 
     // Card grouped by transaction-date month, net of reversals (filtered to `year`).
@@ -222,7 +222,7 @@ pub fn compute_year_summary(
                 .get(m)
                 .map(|cm| cm.iter().map(|(k, v)| (k.clone(), *v)).collect())
                 .unwrap_or_default();
-            pairs.sort_by(|a, b| b.1.cmp(&a.1));
+            pairs.sort_by_key(|p| std::cmp::Reverse(p.1));
             pairs
                 .into_iter()
                 .map(|(name, val)| CategorySnapshot { name, net_total: val.to_string() })
@@ -320,7 +320,7 @@ fn year_of(ym: &str) -> Option<i32> {
 mod tests {
     use super::*;
     use crate::domain::invoice::YearMonth;
-    use chrono::{NaiveDate, NaiveDateTime};
+    use chrono::NaiveDate;
     use uuid::Uuid;
 
     fn invoice_with(dates_amounts: &[(&str, Decimal)]) -> Invoice {
@@ -345,7 +345,7 @@ mod tests {
             YearMonth::new(2026, 6),
             None,
             txs,
-            NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
+            chrono::DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
         )
     }
 
@@ -468,7 +468,7 @@ mod tests {
     #[test]
     fn year_filter_restricts_to_that_year_and_lists_all_years() {
         let inv = invoice_with(&[("2025-12-10", dec!(200)), ("2026-03-10", dec!(500))]);
-        let all = compute_year_summary(&[inv.clone()], &[], &[], None, None);
+        let all = compute_year_summary(std::slice::from_ref(&inv), &[], &[], None, None);
         assert_eq!(all.available_years, vec![2026, 2025]); // desc, unaffected by filter
         assert_eq!(all.months.len(), 2);
 
