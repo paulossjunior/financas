@@ -637,6 +637,13 @@ impl Database {
         Ok(out)
     }
 
+    pub fn update_bank_entry_category(&mut self, id: &str, category: &str) -> Result<(), String> {
+        self.conn
+            .execute("UPDATE bank_entries SET category = ?1 WHERE id = ?2", params![category, id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn remove_bank_entry(&mut self, id: &str) -> Result<(), String> {
         self.conn
             .execute("DELETE FROM bank_entries WHERE id = ?1", params![id])

@@ -5,6 +5,7 @@ import type {
   DashboardFilter,
   EntryKind,
   BankEntry,
+  ClassifiedEntry,
   ImportResult,
   InflationData,
   InvoiceInfo,
@@ -121,6 +122,24 @@ export async function previewBankStatement(path: string): Promise<StatementPrevi
 export async function importBankStatement(path: string): Promise<number> {
   try {
     return await invoke<number>("import_bank_statement", { path });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+/** Save the (edited) included entries from a preview. Returns how many were saved. */
+export async function saveBankStatement(account: string, entries: ClassifiedEntry[]): Promise<number> {
+  try {
+    return await invoke<number>("save_bank_statement", { account, entries });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+/** Change the category of an already-imported bank entry. */
+export async function setBankEntryCategory(id: string, category: string): Promise<void> {
+  try {
+    await invoke<void>("set_bank_entry_category", { id, category });
   } catch (e) {
     throw new Error(mapError(String(e)));
   }
