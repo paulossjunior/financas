@@ -92,7 +92,7 @@ async function handleRemoveInvoice(invoiceId: string): Promise<void> {
 </template>
 
 <style scoped>
-.page { padding: 1.5rem 2rem; max-width: 900px; margin: 0 auto; }
+.page { padding: 1.5rem 2rem; max-width: 1100px; margin: 0 auto; }
 
 .page-header {
   display: flex;

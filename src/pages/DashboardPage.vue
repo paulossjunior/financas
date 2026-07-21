@@ -549,7 +549,7 @@ const fixosList = computed(() =>
   --shadow: var(--shadow-sm);
 
   padding: 1.75rem 2rem 4rem;
-  max-width: 1160px;
+  max-width: 1320px;
   margin: 0 auto;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
