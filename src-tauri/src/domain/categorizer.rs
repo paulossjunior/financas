@@ -38,18 +38,31 @@ impl Categorizer {
     }
 }
 
+/// Fold a Portuguese accented character to its ASCII base (á→A, ç→C…).
+fn fold(c: char) -> char {
+    match c {
+        'á' | 'à' | 'â' | 'ã' | 'ä' | 'Á' | 'À' | 'Â' | 'Ã' | 'Ä' => 'A',
+        'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => 'E',
+        'í' | 'ì' | 'î' | 'ï' | 'Í' | 'Ì' | 'Î' | 'Ï' => 'I',
+        'ó' | 'ò' | 'ô' | 'õ' | 'ö' | 'Ó' | 'Ò' | 'Ô' | 'Õ' | 'Ö' => 'O',
+        'ú' | 'ù' | 'û' | 'ü' | 'Ú' | 'Ù' | 'Û' | 'Ü' => 'U',
+        'ç' | 'Ç' => 'C',
+        'ñ' | 'Ñ' => 'N',
+        other => other,
+    }
+}
+
 /// Normalize a description or keyword for substring matching.
 ///
 /// Card statements insert auth markers (`*`, `#`) right after the merchant name,
-/// e.g. `JIM.COM* 3REX CENTRO`. A keyword derived without those markers
-/// (`JIM.COM 3REX CENTRO`) would never substring-match the raw text. Normalizing
-/// both sides — uppercasing, turning `*`/`#` into spaces, and collapsing runs of
-/// whitespace — makes a merchant tag apply to every one of its transactions.
+/// e.g. `JIM.COM* 3REX CENTRO`. Normalizing both sides — uppercasing, **folding
+/// accents** (so FARMÁCIA matches FARMACIA), turning `*`/`#` into spaces, and
+/// collapsing whitespace — makes keyword rules match every variant of a merchant.
 pub fn normalize(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut prev_space = true; // start true so leading whitespace is trimmed
     for ch in s.chars() {
-        let c = if ch == '*' || ch == '#' { ' ' } else { ch };
+        let c = if ch == '*' || ch == '#' { ' ' } else { fold(ch) };
         if c.is_whitespace() {
             if !prev_space {
                 out.push(' ');
@@ -216,6 +229,19 @@ mod tests {
         let c = Categorizer::new(rules);
         assert_eq!(c.categorize("Jim.com* 3rex Centro"), "Saúde");
         assert_eq!(c.categorize("Jim.com* Almeia Angel"), "Saúde");
+    }
+
+    #[test]
+    fn accent_insensitive_and_root_match() {
+        let rules = vec![CategoryRule {
+            keywords: vec!["FARMACIA".into(), "DROGA".into(), "ACOUGUE".into()],
+            category: "Saúde".into(),
+            priority: 5,
+        }];
+        let c = Categorizer::new(rules);
+        assert_eq!(c.categorize("FARMÁCIA INDIANA"), "Saúde"); // accent folded
+        assert_eq!(c.categorize("Drogasil Filial"), "Saúde"); // root DROGA
+        assert_eq!(c.categorize("AÇOUGUE SANTA LUCIA"), "Saúde"); // ç folded
     }
 
     #[test]
