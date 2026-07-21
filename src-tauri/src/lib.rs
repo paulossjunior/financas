@@ -51,7 +51,34 @@ pub fn run() {
                 db.load_config().unwrap_or_default()
             };
 
-            let invoices = db.load_invoices().unwrap_or_default();
+            let mut invoices = db.load_invoices().unwrap_or_default();
+
+            // Recategorize on startup so keyword/rule improvements always take effect.
+            // Per-transaction overrides win over the rules.
+            {
+                let categorizer = if config.category_rules.is_empty() {
+                    crate::domain::Categorizer::with_defaults()
+                } else {
+                    crate::domain::Categorizer::new(config.category_rules.clone())
+                };
+                let mut changed = false;
+                for inv in invoices.iter_mut() {
+                    for tx in inv.transactions.iter_mut() {
+                        let new_cat = match config.transaction_overrides.get(&tx.id.to_string()) {
+                            Some(ov) => ov.clone(),
+                            None => categorizer.categorize(&tx.description),
+                        };
+                        if tx.category != new_cat {
+                            tx.category = new_cat;
+                            changed = true;
+                        }
+                    }
+                }
+                if changed {
+                    let _ = db.save_all(&invoices);
+                }
+            }
+
             app.manage(Mutex::new(config));
             app.manage(shared_store_with(invoices));
             app.manage(new_shared_db(db));
