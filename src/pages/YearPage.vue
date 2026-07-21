@@ -478,7 +478,7 @@ const selChartOption = computed(() => {
       <div class="card">
         <h2>Previsão do cartão <span class="hint inline">o que os parcelamentos já comprometem</span></h2>
         <p class="hint">Quanto do cartão já está comprometido em cada mês à frente pelas compras parceladas. Passe o mouse para ver as parcelas.</p>
-        <CardForecastChart :points="data.card_forecast" />
+        <CardForecastChart :points="data.card_forecast" table />
       </div>
 
       <div class="row2">
