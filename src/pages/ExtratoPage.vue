@@ -3,12 +3,21 @@ import { onMounted, ref, computed } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   previewBankStatement,
-  importBankStatement,
+  saveBankStatement,
+  setBankEntryCategory,
   listBankEntries,
   removeBankEntry,
   clearBankEntries,
 } from "@/services/tauri.service";
+import { useSettingsStore } from "@/stores/settings.store";
 import type { BankEntry, StatementPreview } from "@/types/api.types";
+
+const settings = useSettingsStore();
+const categories = computed(() => {
+  const base = settings.categoryGroups.map((g) => g.name);
+  const extra = entries.value.map((e) => e.category).concat(preview.value?.included.map((c) => c.category) ?? []);
+  return [...new Set([...base, ...extra, "Outros"])].sort((a, b) => a.localeCompare(b, "pt-BR"));
+});
 
 const entries = ref<BankEntry[]>([]);
 const preview = ref<StatementPreview | null>(null);
@@ -22,7 +31,7 @@ const brl = (s: string | number) => {
   const v = typeof s === "string" ? num(s) : s;
   return (v < 0 ? "− " : v > 0 ? "+ " : "") + "R$ " + Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
 };
-const day = (iso: string) => { const p = iso.split("-"); return p.length === 3 ? `${p[2]}/${p[1]}` : iso; };
+const day = (iso: string) => { const p = iso.split("-"); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso; };
 const REASON: Record<string, string> = { fatura: "já vem da fatura", salario: "já vem do contracheque", interno: "transferência interna" };
 
 const total = computed(() => entries.value.reduce((a, e) => a + num(e.amount), 0));
@@ -45,10 +54,10 @@ async function pick() {
 }
 
 async function confirmImport() {
-  if (!pendingPath.value) return;
+  if (!preview.value) return;
   loading.value = true; error.value = null;
   try {
-    const n = await importBankStatement(pendingPath.value);
+    const n = await saveBankStatement(preview.value.account, preview.value.included);
     flash.value = `${n} lançamento${n === 1 ? "" : "s"} importado${n === 1 ? "" : "s"}.`;
     preview.value = null; pendingPath.value = null;
     await load();
@@ -57,6 +66,12 @@ async function confirmImport() {
 }
 function cancelPreview() { preview.value = null; pendingPath.value = null; }
 
+async function setCat(e: BankEntry, category: string) {
+  const prev = e.category;
+  e.category = category;
+  try { await setBankEntryCategory(e.id, category); } catch (err) { e.category = prev; error.value = msg(err); }
+}
+
 async function remove(id: string) {
   try { await removeBankEntry(id); await load(); } catch (e) { error.value = msg(e); }
 }
@@ -64,7 +79,7 @@ async function clearAll() {
   try { await clearBankEntries(); await load(); } catch (e) { error.value = msg(e); }
 }
 
-onMounted(load);
+onMounted(async () => { await settings.loadConfig(); await load(); });
 </script>
 
 <template>
@@ -104,7 +119,7 @@ onMounted(load);
             <tr v-for="c in preview.included" :key="c.id">
               <td class="dt">{{ day(c.date) }}</td>
               <td class="ds">{{ c.description }}</td>
-              <td><span class="bdg cat">{{ c.category }}</span></td>
+              <td><select class="catsel" v-model="c.category"><option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option></select></td>
               <td><span class="bdg" :class="c.kind">{{ c.kind === "income" ? "crédito" : "débito" }}</span></td>
               <td class="r" :class="c.kind === 'income' ? 'pos' : 'neg'">{{ brl(c.amount) }}</td>
             </tr>
@@ -143,7 +158,7 @@ onMounted(load);
             <tr v-for="e in entries" :key="e.id">
               <td class="dt">{{ day(e.date) }}</td>
               <td class="ds">{{ e.description }}</td>
-              <td><span class="bdg cat">{{ e.category }}</span></td>
+              <td><select class="catsel" :value="e.category" @change="setCat(e, ($event.target as HTMLSelectElement).value)"><option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option></select></td>
               <td class="r" :class="e.kind === 'income' ? 'pos' : 'neg'">{{ brl(e.amount) }}</td>
               <td class="r"><button class="x" title="Remover" @click="remove(e.id)">✕</button></td>
             </tr>
@@ -185,6 +200,8 @@ th.r, td.r { text-align: right; } tr:last-child td { border-bottom: none; }
 .tot td { font-weight: 800; background: var(--clr-surface-alt, transparent); }
 .bdg { font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 1px 7px; border-radius: 999px; }
 .bdg.cat { background: var(--clr-accent-light, #d3ebe4); color: var(--clr-accent); }
+.catsel { font-family: inherit; font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 7px; border: 1px solid var(--clr-stroke); background: var(--clr-surface); color: var(--clr-text-primary); cursor: pointer; max-width: 180px; }
+.catsel:hover { border-color: var(--clr-accent); }
 .bdg.expense { background: var(--clr-red-soft, #f6d9d9); color: var(--clr-negative); }
 .bdg.income { background: var(--clr-accent-light, #d3ebe4); color: var(--clr-accent); }
 .bdg.fatura { background: #e9e3ff; color: #6d4aff; }

@@ -73,6 +73,29 @@ pub async fn import_bank_statement(
     Ok(n)
 }
 
+/// Save the (possibly re-categorized) included entries from a preview. Dedup by id.
+#[tauri::command]
+pub async fn save_bank_statement(
+    account: String,
+    entries: Vec<ClassifiedEntry>,
+    db: State<'_, SharedDb>,
+) -> Result<usize, String> {
+    let items: Vec<BankEntry> = entries
+        .iter()
+        .filter(|c| c.included)
+        .map(|c| BankEntry::from_classified(c, "BTG", &account))
+        .collect();
+    let n = items.len();
+    db.lock().map_err(|e| e.to_string())?.save_bank_entries(&items)?;
+    Ok(n)
+}
+
+/// Change the category of an already-imported entry.
+#[tauri::command]
+pub async fn set_bank_entry_category(id: String, category: String, db: State<'_, SharedDb>) -> Result<(), String> {
+    db.lock().map_err(|e| e.to_string())?.update_bank_entry_category(&id, &category)
+}
+
 #[tauri::command]
 pub async fn list_bank_entries(db: State<'_, SharedDb>) -> Result<Vec<BankEntry>, String> {
     db.lock().map_err(|e| e.to_string())?.load_bank_entries()
