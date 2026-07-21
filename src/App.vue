@@ -51,7 +51,7 @@ onErrorCaptured((err) => {
           <RouterLink to="/" active-class="active"><span class="ic">📊</span>Dashboard</RouterLink>
           <RouterLink to="/ano" active-class="active"><span class="ic">📅</span>Ano</RouterLink>
           <RouterLink to="/transacoes" active-class="active"><span class="ic">🧾</span>Despesas</RouterLink>
-          <RouterLink to="/receitas-fixos" active-class="active"><span class="ic">💰</span>Receitas &amp; Fixos</RouterLink>
+          <RouterLink to="/receitas-fixos" active-class="active"><span class="ic">💰</span>Fixos &amp; Renda</RouterLink>
           <RouterLink to="/contracheque" active-class="active"><span class="ic">📄</span>Contracheque</RouterLink>
           <RouterLink to="/mapeamento" active-class="active"><span class="ic">🗂️</span>Mapeamento</RouterLink>
           <RouterLink to="/historico" active-class="active"><span class="ic">📈</span>Histórico</RouterLink>
