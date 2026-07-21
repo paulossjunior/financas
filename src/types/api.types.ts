@@ -304,3 +304,30 @@ export interface MonthGroup {
   net_total: string | null;
   invoice_count: number;
 }
+
+// ── Recurring categories (feature 010) ──
+export type FixedOrigin = "extrato" | "fatura" | "manual" | "baseline";
+
+export interface RecurringCategoryInfo {
+  category: string;
+  start_month: string | null;
+  end_month: string | null;
+  /** Baseline (avg of last months) as a decimal string, or null with no history. */
+  baseline: string | null;
+  origin: FixedOrigin | null;
+  varies: boolean;
+}
+
+export interface RecurringSuggestion {
+  category: string;
+  avg: string;
+  months_seen: number;
+}
+
+export interface DerivedFixed {
+  category: string;
+  month: string;
+  amount: string;
+  origin: FixedOrigin;
+  is_baseline: boolean;
+}
