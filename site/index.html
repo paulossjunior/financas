@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Finanças — app desktop local para controlar cartão e contracheque. Nada na nuvem.">
+<title>Finanças — controle local das suas finanças</title>
+<style>
+  :root {
+    --paper:#f5f7f5; --surface:#ffffff; --surface-2:#eef1f0; --ink:#14201d; --ink-2:#48584f;
+    --ink-3:#7c8b83; --line:#dde3e0; --line-soft:#e8ecea;
+    --accent:#0e7c66; --accent-2:#0b6353; --accent-soft:#d3ebe4;
+    --amber:#b45309; --violet:#6d4aff; --red:#b3261e; --blue:#2b6cb0;
+    --shadow: 0 1px 2px rgba(20,32,29,.05), 0 18px 40px -18px rgba(20,32,29,.22);
+    --shadow-sm: 0 1px 2px rgba(20,32,29,.06), 0 6px 16px -8px rgba(20,32,29,.14);
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --maxw: 1120px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --paper:#0c1311; --surface:#131e1b; --surface-2:#182521; --ink:#e9efec; --ink-2:#9fb0a9;
+      --ink-3:#6c7d76; --line:#243430; --line-soft:#1c2926;
+      --accent:#34c9a6; --accent-2:#46d9b6; --accent-soft:#0f342c;
+      --amber:#e0a458; --violet:#9d86ff; --red:#f0827b; --blue:#7bb0e8;
+      --shadow: 0 1px 2px rgba(0,0,0,.5), 0 24px 50px -24px rgba(0,0,0,.6);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.5), 0 10px 24px -12px rgba(0,0,0,.5); }
+  }
+  :root[data-theme="light"]{ --paper:#f5f7f5;--surface:#fff;--surface-2:#eef1f0;--ink:#14201d;--ink-2:#48584f;--ink-3:#7c8b83;--line:#dde3e0;--line-soft:#e8ecea;--accent:#0e7c66;--accent-2:#0b6353;--accent-soft:#d3ebe4;--amber:#b45309;--violet:#6d4aff;--red:#b3261e;--blue:#2b6cb0; }
+  :root[data-theme="dark"]{ --paper:#0c1311;--surface:#131e1b;--surface-2:#182521;--ink:#e9efec;--ink-2:#9fb0a9;--ink-3:#6c7d76;--line:#243430;--line-soft:#1c2926;--accent:#34c9a6;--accent-2:#46d9b6;--accent-soft:#0f342c;--amber:#e0a458;--violet:#9d86ff;--red:#f0827b;--blue:#7bb0e8; }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans); line-height:1.55;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .wrap { max-width:var(--maxw); margin:0 auto; padding:0 24px; }
+  a { color:inherit; }
+  .eyebrow { font-family:var(--mono); font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--accent); font-weight:600; }
+
+  /* Nav */
+  header.nav { position:sticky; top:0; z-index:50; background:color-mix(in srgb, var(--paper) 86%, transparent);
+    backdrop-filter:saturate(1.4) blur(10px); border-bottom:1px solid var(--line-soft); }
+  .nav .row { display:flex; align-items:center; gap:20px; height:62px; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:800; letter-spacing:-.02em; font-size:17px; }
+  .brand .mark { width:30px; height:30px; border-radius:8px; background:var(--accent); color:#fff; display:grid; place-items:center; font-weight:800; }
+  .nav nav { margin-left:auto; display:flex; gap:26px; align-items:center; font-size:14px; color:var(--ink-2); }
+  .nav nav a { text-decoration:none; }
+  .nav nav a:hover { color:var(--ink); }
+  .btn { display:inline-flex; align-items:center; gap:8px; font-weight:700; font-size:14px; padding:10px 18px; border-radius:10px;
+    text-decoration:none; border:1px solid transparent; cursor:pointer; transition:transform .06s, background .15s; }
+  .btn:active { transform:translateY(1px); }
+  .btn.primary { background:var(--accent); color:#fff; }
+  .btn.primary:hover { background:var(--accent-2); }
+  .btn.ghost { border-color:var(--line); color:var(--ink); background:var(--surface); }
+  .btn.ghost:hover { border-color:var(--accent); color:var(--accent); }
+  .nav .btn { padding:8px 15px; }
+  @media (max-width:720px){ .nav nav .lnk { display:none; } }
+
+  /* Hero */
+  .hero { padding:72px 0 40px; }
+  .hero-grid { display:grid; grid-template-columns:1.05fr .95fr; gap:56px; align-items:center; }
+  @media (max-width:900px){ .hero-grid { grid-template-columns:1fr; gap:36px; } }
+  h1 { font-size:clamp(38px, 6vw, 62px); line-height:1.02; letter-spacing:-.035em; font-weight:850; margin:16px 0 0; text-wrap:balance; }
+  h1 .hl { color:var(--accent); }
+  .lede { font-size:clamp(16px,2.2vw,19px); color:var(--ink-2); max-width:44ch; margin:20px 0 0; }
+  .cta-row { display:flex; gap:12px; flex-wrap:wrap; margin-top:28px; align-items:center; }
+  .cta-note { font-family:var(--mono); font-size:12px; color:var(--ink-3); }
+  .trustline { display:flex; gap:18px; flex-wrap:wrap; margin-top:26px; font-size:13px; color:var(--ink-2); }
+  .trustline span { display:inline-flex; align-items:center; gap:7px; }
+  .tick { color:var(--accent); font-weight:800; }
+
+  /* Hero dashboard card */
+  .panel { background:var(--surface); border:1px solid var(--line); border-radius:18px; box-shadow:var(--shadow); overflow:hidden; }
+  .panel-top { display:flex; align-items:center; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line-soft); background:var(--surface-2); }
+  .dot3 { display:flex; gap:6px; } .dot3 i { width:10px; height:10px; border-radius:50%; background:var(--line); }
+  .panel-top .ttl { font-family:var(--mono); font-size:12px; color:var(--ink-3); margin-left:6px; }
+  .panel-top .chip { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--accent); background:var(--accent-soft); padding:3px 9px; border-radius:999px; }
+  .panel-body { padding:18px; }
+  .kpis { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .kpi { border:1px solid var(--line-soft); border-radius:12px; padding:11px 12px; }
+  .kpi .l { font-size:11px; color:var(--ink-2); font-weight:600; }
+  .kpi .v { font-size:20px; font-weight:800; letter-spacing:-.02em; margin-top:2px; }
+  .kpi .v.neg { color:var(--red); } .kpi .v.pos { color:var(--accent); }
+  .kpi .s { font-size:10.5px; color:var(--ink-3); font-family:var(--mono); }
+  .section-h { font-size:12px; font-weight:700; color:var(--ink-2); margin:16px 0 8px; display:flex; justify-content:space-between; }
+  .section-h .mut { color:var(--ink-3); font-weight:600; font-family:var(--mono); font-size:11px; }
+  .compbar { display:flex; height:30px; border-radius:8px; overflow:hidden; gap:2px; background:var(--surface-2); }
+  .seg { color:#fff; font-size:10.5px; font-weight:700; display:flex; align-items:center; justify-content:center; white-space:nowrap; overflow:hidden; }
+  .seg.c1{background:var(--accent);} .seg.c2{background:var(--amber);} .seg.c3{background:var(--violet);} .seg.c4{background:var(--red);}
+  .legend { display:flex; flex-wrap:wrap; gap:12px; margin-top:9px; font-size:11px; color:var(--ink-2); }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .sw { width:9px; height:9px; border-radius:2px; }
+  .sw.c1{background:var(--accent);}.sw.c2{background:var(--amber);}.sw.c3{background:var(--violet);}.sw.c4{background:var(--red);}
+  .tmap { display:grid; grid-template-columns:2fr 1.2fr 1fr; grid-template-rows:46px 34px; gap:4px; margin-top:6px; }
+  .tile { border-radius:7px; color:#fff; font-size:11px; font-weight:700; padding:7px 9px; display:flex; align-items:flex-end; overflow:hidden; }
+  .tile small { font-weight:600; opacity:.85; font-family:var(--mono); }
+  .tile.a{background:var(--accent);} .tile.b{background:var(--amber);} .tile.c{background:var(--violet);}
+  .tile.d{background:#2b7a78;} .tile.e{background:var(--red);}
+  .tile.wide{ grid-row:span 2; flex-direction:column; align-items:flex-start; justify-content:space-between; }
+
+  /* Section scaffolding */
+  section { padding:64px 0; border-top:1px solid var(--line-soft); }
+  .sec-head { max-width:640px; }
+  h2 { font-size:clamp(26px,3.4vw,36px); letter-spacing:-.025em; font-weight:820; margin:12px 0 0; text-wrap:balance; }
+  .sec-sub { color:var(--ink-2); font-size:16px; margin:14px 0 0; }
+
+  /* Privacy band */
+  .band { background:var(--ink); color:var(--paper); border-radius:20px; padding:44px; display:grid; grid-template-columns:1.2fr 1fr; gap:32px; align-items:center; }
+  :root[data-theme="dark"] .band, @media (prefers-color-scheme:dark){ }
+  .band h2 { color:#fff; }
+  .band .sec-sub { color:color-mix(in srgb, var(--paper) 78%, transparent); }
+  .band .big { font-size:clamp(40px,7vw,72px); font-weight:850; letter-spacing:-.04em; line-height:1; color:var(--accent); }
+  .band .biglbl { font-family:var(--mono); font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:color-mix(in srgb,var(--paper) 65%, transparent); margin-top:10px; }
+  .band ul { margin:18px 0 0; padding:0; list-style:none; display:grid; gap:10px; font-size:14px; }
+  .band li { display:flex; gap:10px; align-items:flex-start; color:color-mix(in srgb,var(--paper) 88%, transparent); }
+  .band li .tick { color:var(--accent); }
+  @media (max-width:760px){ .band { grid-template-columns:1fr; padding:30px; } }
+
+  /* Feature grid */
+  .fgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:34px; }
+  @media (max-width:860px){ .fgrid { grid-template-columns:1fr 1fr; } }
+  @media (max-width:560px){ .fgrid { grid-template-columns:1fr; } }
+  .fcard { background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:20px; box-shadow:var(--shadow-sm); }
+  .fcard .ic { width:38px; height:38px; border-radius:10px; background:var(--accent-soft); color:var(--accent); display:grid; place-items:center; font-size:19px; }
+  .fcard h3 { font-size:16px; margin:14px 0 6px; letter-spacing:-.01em; }
+  .fcard p { font-size:13.5px; color:var(--ink-2); margin:0; }
+
+  /* Steps */
+  .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:34px; counter-reset:s; }
+  @media (max-width:760px){ .steps { grid-template-columns:1fr; } }
+  .step { border-left:2px solid var(--line); padding:4px 0 4px 20px; position:relative; counter-increment:s; }
+  .step::before { content:counter(s,decimal-leading-zero); font-family:var(--mono); font-size:12px; color:var(--accent); position:absolute; left:-1px; top:0; transform:translateX(-50%); background:var(--paper); padding:2px 0; }
+  .step h3 { font-size:16px; margin:0 0 6px; }
+  .step p { font-size:13.5px; color:var(--ink-2); margin:0; }
+
+  /* Insight highlight */
+  .insight { display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:center; }
+  @media (max-width:820px){ .insight { grid-template-columns:1fr; } }
+  .quote { font-size:clamp(22px,3vw,30px); font-weight:750; letter-spacing:-.02em; line-height:1.25; text-wrap:balance; }
+  .quote b { color:var(--accent); }
+  .metric-card { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:22px; box-shadow:var(--shadow-sm); }
+  .mrow { display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--line-soft); font-size:14px; }
+  .mrow:last-child{border-bottom:none;} .mrow .n{color:var(--ink-2);} .mrow b{font-weight:800;}
+  .mrow.tot b{ color:var(--red); }
+  .barmini { height:8px; border-radius:5px; background:var(--surface-2); overflow:hidden; margin-top:4px; }
+  .barmini i { display:block; height:100%; background:var(--accent); border-radius:5px; }
+
+  /* Tech strip */
+  .tech { display:flex; flex-wrap:wrap; gap:10px; margin-top:26px; }
+  .pill { font-family:var(--mono); font-size:12px; color:var(--ink-2); border:1px solid var(--line); border-radius:999px; padding:6px 13px; background:var(--surface); }
+
+  /* Download */
+  .dl { text-align:center; }
+  .dl-cards { display:grid; grid-template-columns:1fr 1fr; gap:16px; max-width:640px; margin:30px auto 0; }
+  @media (max-width:560px){ .dl-cards { grid-template-columns:1fr; } }
+  .dl-card { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:24px; box-shadow:var(--shadow-sm); text-decoration:none; color:inherit; display:block; transition:border-color .15s, transform .06s; }
+  .dl-card:hover { border-color:var(--accent); transform:translateY(-2px); }
+  .dl-card .os { height:38px; color:var(--ink); display:flex; align-items:center; justify-content:center; }
+  .dl-card:hover .os { color:var(--accent); }
+  .dl-card .n { font-weight:800; margin-top:8px; font-size:17px; }
+  .dl-card .f { font-family:var(--mono); font-size:11.5px; color:var(--ink-3); margin-top:3px; }
+  .fineprint { font-family:var(--mono); font-size:11.5px; color:var(--ink-3); margin-top:20px; }
+
+  footer { border-top:1px solid var(--line-soft); padding:34px 0; color:var(--ink-3); font-size:13px; }
+  .foot-row { display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; align-items:center; }
+  footer a { color:var(--ink-2); text-decoration:none; } footer a:hover{ color:var(--accent); }
+
+  /* ── Mobile-first tuning: safe base for small screens, no horizontal scroll ── */
+  html, body { max-width:100%; overflow-x:hidden; }
+  img, svg, .panel, .compbar, .tmap { max-width:100%; }
+  @media (max-width:600px){
+    .wrap { padding:0 18px; }
+    .hero { padding:32px 0 18px; }
+    section { padding:44px 0; }
+    h1 { font-size:33px; letter-spacing:-.03em; }
+    .lede { font-size:16px; }
+    .cta-row { gap:10px; }
+    .cta-row .btn { flex:1 1 auto; justify-content:center; min-height:46px; }
+    .cta-note { width:100%; text-align:center; margin-top:2px; }
+    .trustline { gap:10px 16px; font-size:12.5px; }
+    .kpis { gap:8px; }
+    .kpi { padding:10px; } .kpi .v { font-size:17px; } .kpi .l { font-size:10.5px; }
+    .panel-body { padding:14px; }
+    .band { padding:24px; border-radius:16px; }
+    .band .big { font-size:56px; }
+    .fcard, .metric-card, .dl-card { padding:18px; }
+    .nav .row { height:56px; }
+    .brand { font-size:16px; }
+    .quote { font-size:22px; }
+    h2 { font-size:26px; }
+    .foot-row { flex-direction:column; align-items:flex-start; gap:8px; }
+  }
+  @media (max-width:380px){
+    .kpis { grid-template-columns:1fr 1fr; }   /* 3 KPIs get cramped on tiny phones */
+  }
+  /* Larger tap targets on touch devices */
+  @media (hover:none){ .btn, .dl-card, .nav nav a { min-height:44px; } }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap row">
+    <div class="brand"><span class="mark">₣</span> Finanças</div>
+    <nav>
+      <a class="lnk" href="#recursos">Recursos</a>
+      <a class="lnk" href="#como">Como funciona</a>
+      <a class="lnk" href="#privacidade">Privacidade</a>
+      <a class="btn primary" href="#baixar">Baixar</a>
+    </nav>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero" style="border-top:none">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="eyebrow">App desktop · macOS &amp; Windows</span>
+      <h1>Seu dinheiro no <span class="hl">seu computador</span>. Nada na nuvem.</h1>
+      <p class="lede">Importe a fatura do <b>cartão BTG</b> e o <b>contracheque do SouGov.br</b> e veja, num painel só, para onde o dinheiro foi — no mês, no ano e em relatório. Tudo fica no seu HD.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="#baixar">↓ Baixar grátis</a>
+        <a class="btn ghost" href="#como">Ver como funciona</a>
+        <span class="cta-note">v0.1.0 · código aberto</span>
+      </div>
+      <div class="trustline">
+        <span><i class="tick">✓</i> 100% local</span>
+        <span><i class="tick">✓</i> Sem conta, sem cadastro</span>
+        <span><i class="tick">✓</i> Sem rastreio</span>
+      </div>
+    </div>
+
+    <!-- live-looking dashboard -->
+    <div class="panel" role="img" aria-label="Prévia do painel do mês">
+      <div class="panel-top">
+        <span class="dot3"><i></i><i></i><i></i></span>
+        <span class="ttl">Finanças — seu mês</span>
+        <span class="chip">casa completa</span>
+      </div>
+      <div class="panel-body">
+        <div class="kpis">
+          <div class="kpi"><div class="l">Receita</div><div class="v pos tnum">R$ 12.500</div><div class="s">contracheque + bolsa</div></div>
+          <div class="kpi"><div class="l">Despesa</div><div class="v tnum">R$ 9.800</div><div class="s">cartão+fixos+avulsos</div></div>
+          <div class="kpi"><div class="l">Teto do cartão</div><div class="v tnum">R$ 4.200</div><div class="s">renda − fixos</div></div>
+        </div>
+        <div class="section-h">Composição da despesa <span class="mut">jun/26</span></div>
+        <div class="compbar">
+          <div class="seg c1" style="flex-grow:13533">Cartão 46%</div>
+          <div class="seg c2" style="flex-grow:9790">Fixos 31%</div>
+          <div class="seg c3" style="flex-grow:5250">Avulsos 8%</div>
+          <div class="seg c4" style="flex-grow:8757">Descontos 15%</div>
+        </div>
+        <div class="legend">
+          <span><i class="sw c1"></i>Cartão</span><span><i class="sw c2"></i>Fixos</span>
+          <span><i class="sw c3"></i>Avulsos</span><span><i class="sw c4"></i>Descontos da folha</span>
+        </div>
+        <div class="section-h">Mapa de gastos <span class="mut">treemap</span></div>
+        <div class="tmap">
+          <div class="tile a wide">Moradia <small>R$ 3.200</small></div>
+          <div class="tile b">Mercado <small>2.100</small></div>
+          <div class="tile c">Transporte <small>1.400</small></div>
+          <div class="tile d">Saúde <small>900</small></div>
+          <div class="tile e">Lazer <small>700</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRIVACY BAND -->
+<section id="privacidade">
+  <div class="wrap">
+    <div class="band">
+      <div>
+        <span class="eyebrow" style="color:var(--accent)">Privacidade por padrão</span>
+        <h2>Seus dados nunca saem da máquina.</h2>
+        <p class="sec-sub">Sem servidor, sem login, sem sincronização. O app lê seus arquivos, guarda tudo num banco local e pronto. A senha da fatura fica no cofre do sistema (Keychain), nunca em texto.</p>
+        <ul>
+          <li><i class="tick">✓</i> Tudo guardado num banco local no seu computador</li>
+          <li><i class="tick">✓</i> Zero chamadas de rede — funciona offline</li>
+          <li><i class="tick">✓</i> Código aberto: dá pra auditar</li>
+        </ul>
+      </div>
+      <div style="text-align:center">
+        <div class="big">0</div>
+        <div class="biglbl">bytes enviados pra nuvem</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="recursos">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">O que ele faz</span>
+      <h2>Um painel de analista para a sua casa.</h2>
+      <p class="sec-sub">Junta cartão, contracheque, contas fixas e gastos avulsos — e transforma em decisão.</p>
+    </div>
+    <div class="fgrid">
+      <div class="fcard"><div class="ic">📥</div><h3>Importa fatura &amp; contracheque</h3><p>Fatura BTG em .xlsx (mesmo cifrada) e o contracheque do SouGov.br em PDF, com classificação automática de salário, bônus e descontos.</p></div>
+      <div class="fcard"><div class="ic">📅</div><h3>Painel do mês</h3><p>Receita, despesa, saldo, líquido do contracheque e a composição do gasto — cartão, fixos, avulsos e descontos, lado a lado.</p></div>
+      <div class="fcard"><div class="ic">📊</div><h3>Visão do ano</h3><p>Filtro por período, matriz categoria × ano, treemap e evolução multi-linha por categoria. O ano inteiro num relance.</p></div>
+      <div class="fcard"><div class="ic">🎯</div><h3>Teto do cartão</h3><p>Quanto o cartão pode gastar sem furar o orçamento — em dois cenários: renda recorrente e só o salário permanente.</p></div>
+      <div class="fcard"><div class="ic">🧾</div><h3>Relatórios em PDF</h3><p>Fecho do mês e do período, prontos para imprimir ou salvar em PDF. Ideal para arquivar ou compartilhar com quem cuida das contas.</p></div>
+      <div class="fcard"><div class="ic">🔎</div><h3>Categorias &amp; detalhe</h3><p>Regras por palavra-chave, ajuste manual e drill-down: clique numa categoria e veja cada despesa, com a origem.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW -->
+<section id="como">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Como funciona</span>
+      <h2>Três passos, cinco minutos.</h2>
+    </div>
+    <div class="steps">
+      <div class="step"><h3>Importe</h3><p>Arraste a fatura BTG e o PDF do contracheque. O app lê, classifica e guarda — localmente.</p></div>
+      <div class="step"><h3>Organize</h3><p>Ajuste categorias e cadastre contas fixas, renda extra e gastos avulsos. As regras se aplicam sozinhas nos próximos meses.</p></div>
+      <div class="step"><h3>Decida</h3><p>Veja o mês, compare o ano e exporte o relatório. Saiba onde cortar antes da próxima fatura.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- INSIGHT -->
+<section>
+  <div class="wrap insight">
+    <div>
+      <span class="eyebrow">Enxergue o invisível</span>
+      <p class="quote">Gastos pequenos e repetidos são o maior vazamento. No ano, <b>comer fora</b> somou <b>R$ 7.400</b> — mais que qualquer categoria isolada.</p>
+      <p class="sec-sub">O treemap e a matriz por ano mostram o peso real de cada hábito. O que some no extrato aparece no painel.</p>
+    </div>
+    <div class="metric-card">
+      <div class="section-h" style="margin-top:0">Comer fora <span class="mut">R$ 7.400</span></div>
+      <div class="mrow"><span class="n">Restaurantes</span><b class="tnum">R$ 3.100</b></div>
+      <div class="barmini"><i style="width:100%"></i></div>
+      <div class="mrow"><span class="n">Delivery</span><b class="tnum">R$ 2.600</b></div>
+      <div class="barmini"><i style="width:84%"></i></div>
+      <div class="mrow"><span class="n">Mercado</span><b class="tnum">R$ 1.700</b></div>
+      <div class="barmini"><i style="width:62%"></i></div>
+    </div>
+  </div>
+</section>
+
+<!-- DOWNLOAD -->
+<section id="baixar">
+  <div class="wrap dl">
+    <span class="eyebrow">Baixar</span>
+    <h2>Comece agora. É de graça.</h2>
+    <p class="sec-sub" style="margin-left:auto;margin-right:auto">Baixe o instalador, importe sua primeira fatura e veja o mês fechar.</p>
+    <div class="dl-cards">
+      <a class="dl-card" href="https://github.com/paulossjunior/financas/releases/latest">
+        <div class="os"><svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor" aria-hidden="true"><path d="M16.365 1.43c0 1.14-.42 2.2-1.12 2.99-.79.9-2.07 1.6-3.32 1.5-.15-1.13.42-2.32 1.08-3.05.74-.83 2.07-1.46 3.36-1.44zM20.5 17.2c-.6 1.38-.9 1.99-1.67 3.2-1.08 1.7-2.6 3.82-4.48 3.83-1.67.02-2.1-1.08-4.37-1.07-2.27.01-2.74 1.09-4.41 1.07-1.88-.02-3.31-1.93-4.39-3.62-3.02-4.77-3.34-10.36-1.47-13.34 1.32-2.11 3.4-3.35 5.36-3.35 1.99 0 3.24 1.1 4.89 1.1 1.6 0 2.57-1.1 4.88-1.1 1.74 0 3.58.95 4.9 2.58-4.31 2.36-3.6 8.52.23 10.7z"/></svg></div><div class="n">macOS</div>
+        <div class="f">.dmg · universal (Intel + Apple Silicon)</div>
+      </a>
+      <a class="dl-card" href="https://github.com/paulossjunior/financas/releases/latest">
+        <div class="os"><svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor" aria-hidden="true"><path d="M3 5.1 10.4 4.09v7.16H3zM11.3 3.97 21 2.63v8.62h-9.7zM3 12.75h7.4v7.16L3 18.9zM11.3 12.75H21v8.62l-9.7-1.34z"/></svg></div><div class="n">Windows</div>
+        <div class="f">.msi / .exe · 64-bit</div>
+      </a>
+    </div>
+    <p class="fineprint">Builds sem assinatura: no macOS, botão-direito → Abrir; no Windows, SmartScreen → Executar assim mesmo.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-row">
+    <div class="brand" style="font-size:15px"><span class="mark" style="width:24px;height:24px;font-size:13px">₣</span> Finanças</div>
+    <div>Local-first · código aberto · <a href="https://github.com/paulossjunior/financas">GitHub</a></div>
+    <div>Feito para quem quer controle, não mais uma conta na nuvem.</div>
+  </div>
+</footer>
+
+</body>
+</html>
