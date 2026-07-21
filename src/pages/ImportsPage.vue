@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import MovimentacoesPage from "@/pages/MovimentacoesPage.vue";
 import HistoryPage from "@/pages/HistoryPage.vue";
 import ExtratoPage from "@/pages/ExtratoPage.vue";
 import ContrachequePage from "@/pages/ContrachequePage.vue";
 
-const tab = ref<"faturas" | "extrato" | "contracheque">("faturas");
+const tab = ref<"movimentacoes" | "faturas" | "extrato" | "contracheque">("movimentacoes");
 </script>
 
 <template>
   <div class="imp">
     <div class="tabs" role="tablist">
+      <button role="tab" :class="{ active: tab === 'movimentacoes' }" @click="tab = 'movimentacoes'">
+        <span class="ic">🔁</span> Extratos &amp; Faturas
+      </button>
       <button role="tab" :class="{ active: tab === 'faturas' }" @click="tab = 'faturas'">
         <span class="ic">📁</span> Faturas
       </button>
@@ -20,7 +24,8 @@ const tab = ref<"faturas" | "extrato" | "contracheque">("faturas");
         <span class="ic">📄</span> Contracheque
       </button>
     </div>
-    <HistoryPage v-if="tab === 'faturas'" />
+    <MovimentacoesPage v-if="tab === 'movimentacoes'" />
+    <HistoryPage v-else-if="tab === 'faturas'" />
     <ExtratoPage v-else-if="tab === 'extrato'" />
     <ContrachequePage v-else />
   </div>
