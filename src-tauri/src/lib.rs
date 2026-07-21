@@ -13,6 +13,7 @@ use commands::{
     config::{get_config, save_config},
     dashboard::{get_dashboard_cmd, get_year_summary_cmd, list_invoices, remove_invoice},
     import::import_invoices,
+    inflation::{fetch_ipca, get_inflation},
     manual_entries::{add_manual_entry, list_manual_entries, remove_manual_entry, update_manual_entry},
     payslips::{import_payslip, list_payslips, remove_payslip, save_payslip},
     secrets::{clear_saved_password, has_saved_password},
@@ -101,6 +102,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             import_invoices,
+            fetch_ipca,
+            get_inflation,
             get_dashboard_cmd,
             get_year_summary_cmd,
             list_invoices,

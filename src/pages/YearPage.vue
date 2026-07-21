@@ -10,6 +10,7 @@ import type { YearSummary } from "@/types/api.types";
 import ReportOverlay from "@/components/report/ReportOverlay.vue";
 import CategoryTreemap from "@/components/dashboard/CategoryTreemap.vue";
 import CardForecastChart from "@/components/dashboard/CardForecastChart.vue";
+import InflationCard from "@/components/dashboard/InflationCard.vue";
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent]);
 
@@ -472,6 +473,11 @@ const selChartOption = computed(() => {
             <span class="camt" :class="n(m.card) > ceiling ? 'over' : 'ok'">{{ brl(m.card) }}</span>
           </div>
         </div>
+      </div>
+
+      <!-- Inflação (IPCA + pessoal) -->
+      <div class="card">
+        <InflationCard />
       </div>
 
       <!-- Previsão do cartão (parcelamentos) -->

@@ -7,6 +7,7 @@ import ImportWarnings from "@/components/import/ImportWarnings.vue";
 import ReportOverlay from "@/components/report/ReportOverlay.vue";
 import CategoryTreemap from "@/components/dashboard/CategoryTreemap.vue";
 import CardForecastChart from "@/components/dashboard/CardForecastChart.vue";
+import InflationCard from "@/components/dashboard/InflationCard.vue";
 import type { Category, ManualEntry, ParseWarning, Payslip } from "@/types/api.types";
 import { listPayslips } from "@/services/tauri.service";
 
@@ -783,6 +784,9 @@ function refLabel(): string {
       <section>
         <h2>Gráficos</h2>
         <div class="grid2">
+          <div class="card">
+            <InflationCard compact />
+          </div>
           <div class="card" v-if="hasForecast">
             <h3>Próximos meses do cartão</h3>
             <p class="cap">Compromisso já assumido pelos parcelamentos (independe do mês filtrado).</p>
