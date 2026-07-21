@@ -8,6 +8,7 @@ import ManualEntriesPage from "@/pages/ManualEntriesPage.vue";
 import MappingPage from "@/pages/MappingPage.vue";
 import ContrachequePage from "@/pages/ContrachequePage.vue";
 import ExtratoPage from "@/pages/ExtratoPage.vue";
+import ImportsPage from "@/pages/ImportsPage.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -17,6 +18,7 @@ export const router = createRouter({
     { path: "/transacoes", component: TransactionsPage },
     { path: "/receitas-fixos", component: ManualEntriesPage },
     { path: "/contracheque", component: ContrachequePage },
+    { path: "/importacoes", component: ImportsPage },
     { path: "/extrato", component: ExtratoPage },
     { path: "/mapeamento", component: MappingPage },
     { path: "/historico", component: HistoryPage },
