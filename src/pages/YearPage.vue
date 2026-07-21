@@ -11,6 +11,7 @@ import ReportOverlay from "@/components/report/ReportOverlay.vue";
 import CategoryTreemap from "@/components/dashboard/CategoryTreemap.vue";
 import CardForecastChart from "@/components/dashboard/CardForecastChart.vue";
 import InflationCard from "@/components/dashboard/InflationCard.vue";
+import InflationExplainer from "@/components/dashboard/InflationExplainer.vue";
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent]);
 
@@ -510,6 +511,14 @@ const selChartOption = computed(() => {
       <!-- Inflação (IPCA + pessoal) -->
       <div class="card">
         <InflationCard @updated="reloadInflation" />
+      </div>
+
+      <div class="card" v-if="inflation?.available">
+        <InflationExplainer
+          :data="inflation"
+          :monthly-expense="periodExpense / Math.max(1, activeMonths)"
+          :monthly-income="periodIncome / Math.max(1, activeMonths)"
+        />
       </div>
 
       <!-- Previsão do cartão (parcelamentos) -->

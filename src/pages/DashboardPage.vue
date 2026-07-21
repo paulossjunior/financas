@@ -7,6 +7,7 @@ import ImportWarnings from "@/components/import/ImportWarnings.vue";
 import ReportOverlay from "@/components/report/ReportOverlay.vue";
 import CategoryTreemap from "@/components/dashboard/CategoryTreemap.vue";
 import CardForecastChart from "@/components/dashboard/CardForecastChart.vue";
+import InflationExplainer from "@/components/dashboard/InflationExplainer.vue";
 import type { Category, InflationData, ManualEntry, ParseWarning, Payslip } from "@/types/api.types";
 import { listPayslips, getInflation, fetchIpca } from "@/services/tauri.service";
 
@@ -689,6 +690,13 @@ function refLabel(): string {
           </div>
         </div>
         <p v-if="inflError" class="cap" style="color: var(--red)">⚠ {{ inflError }}</p>
+      </section>
+
+      <section v-if="inflAvailable">
+        <h2>Inflação no seu bolso</h2>
+        <div class="card">
+          <InflationExplainer :data="inflation" :monthly-expense="expense" :monthly-income="income" />
+        </div>
       </section>
 
       <!-- Fixo x variavel -->
