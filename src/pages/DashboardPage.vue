@@ -57,6 +57,20 @@ const hasPayslip = computed(() => scopePayslips.value.length > 0);
 const salaryNet = computed(() => scopePayslips.value.reduce((a, p) => a + num(p.net), 0) / divisor.value);
 const salaryDed = computed(() => scopePayslips.value.reduce((a, p) => a + num(p.deductions), 0) / divisor.value);
 const payrollDed = computed(() => num(d.value?.total_payroll_deductions) / divisor.value);
+// Payroll deductions as detail rows (aggregated by description across scope payslips).
+const deductionRows = computed(() => {
+  const m = new Map<string, number>();
+  for (const p of scopePayslips.value) {
+    for (const it of p.items) {
+      if (it.kind === "desconto" && !it.offsetting) {
+        m.set(it.description, (m.get(it.description) ?? 0) + num(it.amount));
+      }
+    }
+  }
+  return [...m.entries()]
+    .map(([description, amount]) => ({ description, amount: amount / divisor.value }))
+    .sort((a, b) => b.amount - a.amount);
+});
 
 const UTIL_RE = /energ|[aá]gua|luz|saneam/i;
 const AGUA_RE = /[aá]gua|saneam/i;
@@ -467,6 +481,21 @@ function refLabel(): string {
               </div>
             </div>
             <p v-else class="cap">Nenhuma conta fixa. Cadastre em <strong>Fixos &amp; Renda</strong>.</p>
+          </div>
+
+          <div class="card" v-if="deductionRows.length">
+            <h3>Descontos da folha — detalhe</h3>
+            <p class="cap">FUNPRESP, GEAP (saúde), PSS (previdência) e IR retido — do contracheque.</p>
+            <div class="fixlist">
+              <div v-for="(dr, i) in deductionRows" :key="i" class="fixrow">
+                <span class="fn">{{ dr.description }}</span>
+                <b>{{ fmt(dr.amount) }}</b>
+              </div>
+              <div class="fixrow tot">
+                <span class="fn">Total descontos</span>
+                <b>{{ fmt(payrollDed) }}</b>
+              </div>
+            </div>
           </div>
         </div>
       </section>
