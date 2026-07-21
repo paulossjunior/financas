@@ -1,3 +1,4 @@
+pub mod bank;
 pub mod categories;
 pub mod config;
 pub mod dashboard;

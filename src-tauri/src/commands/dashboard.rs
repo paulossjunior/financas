@@ -26,8 +26,12 @@ pub async fn get_dashboard_cmd(
     config: State<'_, Mutex<AppConfig>>,
     db: State<'_, SharedDb>,
 ) -> Result<DashboardData, String> {
-    let manual_entries = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
-    let payslips = db.lock().map_err(|e| e.to_string())?.load_payslips().unwrap_or_default();
+    let mut manual_entries = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
+    let (payslips, bank) = {
+        let d = db.lock().map_err(|e| e.to_string())?;
+        (d.load_payslips().unwrap_or_default(), d.load_bank_entries().unwrap_or_default())
+    };
+    manual_entries.extend(bank.iter().map(|b| b.to_manual_entry()));
     let store_lock = store.lock().map_err(|e| e.to_string())?;
     get_dashboard(&store_lock, &manual_entries, &payslips, filter.unwrap_or_default())
 }
@@ -40,9 +44,13 @@ pub async fn get_year_summary_cmd(
     config: State<'_, Mutex<AppConfig>>,
     db: State<'_, SharedDb>,
 ) -> Result<YearSummary, String> {
-    let manual = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
+    let mut manual = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
     let invoices = store.lock().map_err(|e| e.to_string())?.list_owned();
-    let payslips = db.lock().map_err(|e| e.to_string())?.load_payslips().unwrap_or_default();
+    let (payslips, bank) = {
+        let d = db.lock().map_err(|e| e.to_string())?;
+        (d.load_payslips().unwrap_or_default(), d.load_bank_entries().unwrap_or_default())
+    };
+    manual.extend(bank.iter().map(|b| b.to_manual_entry()));
     Ok(compute_year_summary(&invoices, &manual, &payslips, year_from, year_to))
 }
 
