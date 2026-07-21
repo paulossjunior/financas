@@ -160,6 +160,8 @@
   .dl-card .n { font-weight:800; margin-top:8px; font-size:17px; }
   .dl-card .f { font-family:var(--mono); font-size:11.5px; color:var(--ink-3); margin-top:3px; }
   .fineprint { font-family:var(--mono); font-size:11.5px; color:var(--ink-3); margin-top:20px; }
+  .fineprint a { color:var(--accent); text-decoration:none; } .fineprint a:hover { text-decoration:underline; }
+  .fineprint + .fineprint { margin-top:6px; }
 
   footer { border-top:1px solid var(--line-soft); padding:34px 0; color:var(--ink-3); font-size:13px; }
   .foot-row { display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; align-items:center; }
@@ -350,15 +352,16 @@
     <h2>Comece agora. É de graça.</h2>
     <p class="sec-sub" style="margin-left:auto;margin-right:auto">Baixe o instalador, importe sua primeira fatura e veja o mês fechar.</p>
     <div class="dl-cards">
-      <a class="dl-card" href="https://github.com/paulossjunior/financas/releases/latest">
-        <div class="os"><svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor" aria-hidden="true"><path d="M16.365 1.43c0 1.14-.42 2.2-1.12 2.99-.79.9-2.07 1.6-3.32 1.5-.15-1.13.42-2.32 1.08-3.05.74-.83 2.07-1.46 3.36-1.44zM20.5 17.2c-.6 1.38-.9 1.99-1.67 3.2-1.08 1.7-2.6 3.82-4.48 3.83-1.67.02-2.1-1.08-4.37-1.07-2.27.01-2.74 1.09-4.41 1.07-1.88-.02-3.31-1.93-4.39-3.62-3.02-4.77-3.34-10.36-1.47-13.34 1.32-2.11 3.4-3.35 5.36-3.35 1.99 0 3.24 1.1 4.89 1.1 1.6 0 2.57-1.1 4.88-1.1 1.74 0 3.58.95 4.9 2.58-4.31 2.36-3.6 8.52.23 10.7z"/></svg></div><div class="n">macOS</div>
-        <div class="f">.dmg · universal (Intel + Apple Silicon)</div>
+      <a class="dl-card" href="https://github.com/paulossjunior/financas/releases/download/v0.1.0/Financas_0.1.0_universal.dmg">
+        <div class="os"><svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor" aria-hidden="true"><path d="M16.365 1.43c0 1.14-.42 2.2-1.12 2.99-.79.9-2.07 1.6-3.32 1.5-.15-1.13.42-2.32 1.08-3.05.74-.83 2.07-1.46 3.36-1.44zM20.5 17.2c-.6 1.38-.9 1.99-1.67 3.2-1.08 1.7-2.6 3.82-4.48 3.83-1.67.02-2.1-1.08-4.37-1.07-2.27.01-2.74 1.09-4.41 1.07-1.88-.02-3.31-1.93-4.39-3.62-3.02-4.77-3.34-10.36-1.47-13.34 1.32-2.11 3.4-3.35 5.36-3.35 1.99 0 3.24 1.1 4.89 1.1 1.6 0 2.57-1.1 4.88-1.1 1.74 0 3.58.95 4.9 2.58-4.31 2.36-3.6 8.52.23 10.7z"/></svg></div><div class="n">Baixar para macOS</div>
+        <div class="f">Financas_0.1.0_universal.dmg · Intel + Apple Silicon</div>
       </a>
-      <a class="dl-card" href="https://github.com/paulossjunior/financas/releases/latest">
-        <div class="os"><svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor" aria-hidden="true"><path d="M3 5.1 10.4 4.09v7.16H3zM11.3 3.97 21 2.63v8.62h-9.7zM3 12.75h7.4v7.16L3 18.9zM11.3 12.75H21v8.62l-9.7-1.34z"/></svg></div><div class="n">Windows</div>
-        <div class="f">.msi / .exe · 64-bit</div>
+      <a class="dl-card" href="https://github.com/paulossjunior/financas/releases/download/v0.1.0/Financas_0.1.0_x64-setup.exe">
+        <div class="os"><svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor" aria-hidden="true"><path d="M3 5.1 10.4 4.09v7.16H3zM11.3 3.97 21 2.63v8.62h-9.7zM3 12.75h7.4v7.16L3 18.9zM11.3 12.75H21v8.62l-9.7-1.34z"/></svg></div><div class="n">Baixar para Windows</div>
+        <div class="f">Financas_0.1.0_x64-setup.exe · 64-bit</div>
       </a>
     </div>
+    <p class="fineprint">v0.1.0 · Windows também em <a href="https://github.com/paulossjunior/financas/releases/download/v0.1.0/Financas_0.1.0_x64_en-US.msi">.msi</a> · <a href="https://github.com/paulossjunior/financas/releases">todas as versões</a></p>
     <p class="fineprint">Builds sem assinatura: no macOS, botão-direito → Abrir; no Windows, SmartScreen → Executar assim mesmo.</p>
   </div>
 </section>
