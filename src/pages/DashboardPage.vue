@@ -887,7 +887,7 @@ function refLabel(): string {
           <div class="logo">₣</div>
           <div>
             <div class="t">{{ isAllMonths ? `Relatório do período` : `Relatório de ${formatMonthFilter(store.monthFilter ?? "")}` }}</div>
-            <div class="s">Contracheque SIGEPE · Cartão BTG (ref. {{ refLabel() }}) · fixos + avulsos</div>
+            <div class="s">Contracheque SouGov.br · Cartão BTG (ref. {{ refLabel() }}) · fixos + avulsos</div>
           </div>
           <div class="right">gerado em {{ genDate }}<br>{{ d.invoice_count }} fatura(s)</div>
         </div>

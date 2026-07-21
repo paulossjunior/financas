@@ -12,12 +12,12 @@
 
 ## User Scenarios & Testing
 
-### User Story 1 — Importar contracheque (SIGEPE) (P1)
+### User Story 1 — Importar contracheque (SouGov.br) (P1)
 
 Usuário importa o PDF do contracheque; o app extrai e classifica tudo: salário × bônus (inclui "Cargo de Direção – CD" como bônus temporário), descontos (IR, GEAP, FUNPRESP, PSS) e detecta adiantamentos que se anulam ("wash"). O líquido do mês passa a alimentar o painel.
 
 **Acceptance**:
-1. Dado um PDF do SIGEPE, ao importar, o líquido, salário, bônus e descontos aparecem no painel do mês.
+1. Dado um PDF do SouGov.br, ao importar, o líquido, salário, bônus e descontos aparecem no painel do mês.
 2. Importar o mesmo mês de novo faz upsert (não duplica).
 3. Vários contracheques podem ser importados de uma vez.
 4. O salário do contracheque **substitui** a renda-salário manual do mês (sem dupla contagem); renda extra manual (ex.: bolsa) continua somando.
@@ -72,7 +72,7 @@ Instaladores para macOS e Windows gerados automaticamente.
 
 ## Requisitos Funcionais
 
-- **FR-001**: Parsear e classificar contracheque SIGEPE (salário/bônus/descontos/wash/líquido por item), com upsert por mês.
+- **FR-001**: Parsear e classificar contracheque SouGov.br (salário/bônus/descontos/wash/líquido por item), com upsert por mês.
 - **FR-002**: Resumo anual por intervalo de anos + meses; cartão por data da compra; `categories` por mês.
 - **FR-003**: Matriz categoria × ano como seletor + gráfico multi-linha + treemap.
 - **FR-004**: Separar despesas recorrentes (fixas) de avulsas em todos os totais (mês e ano); CRUD de avulsos no painel do mês.

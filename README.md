@@ -1,6 +1,6 @@
 # Finanças
 
-Aplicativo desktop de finanças pessoais — importa faturas do cartão **BTG** e o **contracheque do SIGEPE**, e transforma tudo em um painel do mês, um panorama do ano e relatórios em PDF. Roda 100% local; nenhum dado sai da máquina.
+Aplicativo desktop de finanças pessoais — importa faturas do cartão **BTG** e o **contracheque do SouGov.br**, e transforma tudo em um painel do mês, um panorama do ano e relatórios em PDF. Roda 100% local; nenhum dado sai da máquina.
 
 ![CI](https://github.com/paulossjunior/financas/actions/workflows/ci.yml/badge.svg)
 
@@ -12,7 +12,7 @@ Aplicativo desktop de finanças pessoais — importa faturas do cartão **BTG** 
 
 **Importação**
 - Faturas **BTG** em `.xlsx` (inclusive **cifradas** — senha guardada no keychain do SO).
-- **Contracheque SIGEPE** (PDF): extrai e classifica tudo — salário × bônus (inclui "Cargo de Direção – CD" como bônus temporário), descontos (IR, GEAP, FUNPRESP, PSS), detecção de "wash" (adiantamentos que se anulam) e líquido por item. Importa vários de uma vez.
+- **Contracheque SouGov.br** (PDF): extrai e classifica tudo — salário × bônus (inclui "Cargo de Direção – CD" como bônus temporário), descontos (IR, GEAP, FUNPRESP, PSS), detecção de "wash" (adiantamentos que se anulam) e líquido por item. Importa vários de uma vez.
 
 **Painel do mês**
 - KPIs: receita, despesa total, saldo, líquido do contracheque, descontos, bônus.

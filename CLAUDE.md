@@ -7,7 +7,7 @@ at specs/004-payslips-annual-reports/plan.md
 ## Project overview
 
 Desktop personal-finance app (Tauri v2 + Rust + Vue 3 + SQLite). Imports BTG
-card invoices (.xlsx, possibly encrypted) and SIGEPE payslips (PDF); shows a
+card invoices (.xlsx, possibly encrypted) and SouGov.br payslips (PDF); shows a
 monthly dashboard, an annual view, and PDF reports. 100% local, no network.
 
 - **README**: [README.md](README.md) — features, install, dev, build, CI/CD.
