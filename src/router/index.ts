@@ -9,12 +9,14 @@ import MappingPage from "@/pages/MappingPage.vue";
 import ContrachequePage from "@/pages/ContrachequePage.vue";
 import ExtratoPage from "@/pages/ExtratoPage.vue";
 import ImportsPage from "@/pages/ImportsPage.vue";
+import MovimentacoesPage from "@/pages/MovimentacoesPage.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", component: DashboardPage },
     { path: "/ano", component: YearPage },
+    { path: "/movimentacoes", component: MovimentacoesPage },
     { path: "/transacoes", component: TransactionsPage },
     { path: "/receitas-fixos", component: ManualEntriesPage },
     { path: "/contracheque", component: ContrachequePage },
