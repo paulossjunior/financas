@@ -5,6 +5,7 @@ import { useSettingsStore } from "@/stores/settings.store";
 import ImportButton from "@/components/import/ImportButton.vue";
 import ImportWarnings from "@/components/import/ImportWarnings.vue";
 import ReportOverlay from "@/components/report/ReportOverlay.vue";
+import CategoryTreemap from "@/components/dashboard/CategoryTreemap.vue";
 import type { Category, ManualEntry, ParseWarning, Payslip } from "@/types/api.types";
 import { listPayslips } from "@/services/tauri.service";
 
@@ -117,6 +118,7 @@ const reportTitle = computed(() =>
 const genDate = computed(() => new Date().toLocaleDateString("pt-BR"));
 const avulsoExpenses = computed(() => avulsoList.value.filter((e) => e.kind === "expense"));
 const topCats = computed(() => categories.value.slice(0, 8));
+const treemapItems = computed(() => categories.value.map((c) => ({ name: c.name, value: num(c.net_total) })));
 
 const UTIL_RE = /energ|[aá]gua|luz|saneam/i;
 const AGUA_RE = /[aá]gua|saneam/i;
@@ -706,6 +708,12 @@ function refLabel(): string {
         <h2>Gráficos</h2>
         <div class="grid2">
           <div class="card">
+            <h3>Mapa de gastos (treemap)</h3>
+            <p class="cap">Cada retângulo é uma categoria; a área é proporcional ao valor. Passe o mouse para o total.</p>
+            <CategoryTreemap :items="treemapItems" height="340px" />
+          </div>
+
+          <div class="card">
             <h3>Gasto por categoria (casa completa)</h3>
             <p class="cap">Cartão + fixos. Barras <span class="amber-text">âmbar</span> = categoria com contas fixas.</p>
             <div class="bars">
@@ -873,6 +881,12 @@ function refLabel(): string {
                 <div class="f">sem bônus/CD temporário</div>
               </div>
             </div>
+          </div>
+
+          <div v-if="treemapItems.length">
+            <h3>Mapa de gastos</h3>
+            <p class="cap">Área proporcional ao valor da categoria.</p>
+            <CategoryTreemap :items="treemapItems" height="300px" />
           </div>
 
           <div v-if="topCats.length">

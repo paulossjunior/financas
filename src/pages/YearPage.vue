@@ -8,6 +8,7 @@ import { CanvasRenderer } from "echarts/renderers";
 import { getYearSummary } from "@/services/tauri.service";
 import type { YearSummary } from "@/types/api.types";
 import ReportOverlay from "@/components/report/ReportOverlay.vue";
+import CategoryTreemap from "@/components/dashboard/CategoryTreemap.vue";
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent]);
 
@@ -262,6 +263,12 @@ const totalsByYear = computed(() => {
   return map;
 });
 const grandTotalSel = computed(() => [...totalsByYear.value.values()].reduce((a, b) => a + b, 0));
+
+// Treemap items: selection-aware for the screen, all categories for the report.
+const treemapItemsAll = computed(() => matrixRows.value.map((r) => ({ name: r.name, value: r.total })));
+const treemapItemsYear = computed(() =>
+  (selectedCats.value.size ? matrixRows.value.filter((r) => isSel(r.name)) : matrixRows.value).map((r) => ({ name: r.name, value: r.total }))
+);
 
 // Multi-line chart driven by the selection: one line per category + a bold Total line.
 const hasSelection = computed(() => selectedCats.value.size > 0);
@@ -572,6 +579,13 @@ const selChartOption = computed(() => {
         </template>
         <p v-else class="hint">Marque categorias na matriz acima para ver a evolução mês a mês (uma linha por categoria + uma linha de Total).</p>
       </div>
+
+      <!-- Treemap: mapa de gastos do período -->
+      <div class="card" v-if="treemapItemsYear.length">
+        <h2>Mapa de gastos <span class="hint inline">{{ selectedCats.size ? "categorias selecionadas" : "todas as categorias" }}</span></h2>
+        <p class="hint">Área proporcional ao valor. Respeita o filtro de ano e a seleção da matriz.</p>
+        <CategoryTreemap :items="treemapItemsYear" height="360px" />
+      </div>
     </template>
 
     <!-- ── Report (print / PDF) — respects year + month filter ── -->
@@ -672,6 +686,12 @@ const selChartOption = computed(() => {
                 <div class="f">{{ brl(data.salary_only) }} − fixos {{ brl(data.fixed_month) }}</div>
               </div>
             </div>
+          </div>
+
+          <div v-if="treemapItemsAll.length">
+            <h3>Mapa de gastos</h3>
+            <p class="cap">Área proporcional ao valor da categoria no período.</p>
+            <CategoryTreemap :items="treemapItemsAll" height="300px" />
           </div>
 
           <div v-if="ranking.length">
