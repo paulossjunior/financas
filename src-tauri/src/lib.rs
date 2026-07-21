@@ -38,7 +38,7 @@ pub fn run() {
             let mut db = Database::open(&db_path).expect("falha ao abrir banco de dados");
 
             // One-time migration: seed the DB from a legacy config.json if the DB is fresh.
-            let config = if db.config_is_empty() {
+            let mut config = if db.config_is_empty() {
                 let config_path = app
                     .path()
                     .app_config_dir()
@@ -52,6 +52,20 @@ pub fn run() {
             };
 
             let mut invoices = db.load_invoices().unwrap_or_default();
+
+            // Prune orphan transaction overrides (their transaction no longer exists),
+            // so stale overrides don't accumulate across re-imports.
+            {
+                let ids: std::collections::HashSet<String> = invoices
+                    .iter()
+                    .flat_map(|i| i.transactions.iter().map(|t| t.id.to_string()))
+                    .collect();
+                let before = config.transaction_overrides.len();
+                config.transaction_overrides.retain(|k, _| ids.contains(k));
+                if config.transaction_overrides.len() != before {
+                    let _ = db.save_config(&config);
+                }
+            }
 
             // Recategorize on startup so keyword/rule improvements always take effect.
             // Per-transaction overrides win over the rules.
