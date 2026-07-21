@@ -2,8 +2,9 @@
 import { ref } from "vue";
 import HistoryPage from "@/pages/HistoryPage.vue";
 import ExtratoPage from "@/pages/ExtratoPage.vue";
+import ContrachequePage from "@/pages/ContrachequePage.vue";
 
-const tab = ref<"faturas" | "extrato">("faturas");
+const tab = ref<"faturas" | "extrato" | "contracheque">("faturas");
 </script>
 
 <template>
@@ -15,9 +16,13 @@ const tab = ref<"faturas" | "extrato">("faturas");
       <button role="tab" :class="{ active: tab === 'extrato' }" @click="tab = 'extrato'">
         <span class="ic">🏦</span> Extrato
       </button>
+      <button role="tab" :class="{ active: tab === 'contracheque' }" @click="tab = 'contracheque'">
+        <span class="ic">📄</span> Contracheque
+      </button>
     </div>
     <HistoryPage v-if="tab === 'faturas'" />
-    <ExtratoPage v-else />
+    <ExtratoPage v-else-if="tab === 'extrato'" />
+    <ContrachequePage v-else />
   </div>
 </template>
 
