@@ -1,0 +1,278 @@
+//! BTG bank-statement parsing + classification (pure domain).
+//!
+//! Turns the statement rows into credit/debit entries, drops what the app
+//! already counts (card bill, salary when a payslip exists, internal transfers),
+//! and categorizes the rest (app rules, BTG category as fallback).
+
+use std::str::FromStr;
+
+use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use super::categorizer::Categorizer;
+
+/// A raw statement line (before classification).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RawEntry {
+    pub date: String,  // "YYYY-MM-DD"
+    pub month: String, // "YYYY-MM"
+    pub btg_category: String,
+    pub transaction: String,
+    pub description: String,
+    #[serde(with = "rust_decimal::serde::str")]
+    pub amount: Decimal, // signed: negative = debit
+}
+
+/// A classified entry (what to save / show in the preview).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClassifiedEntry {
+    pub id: String,
+    pub date: String,
+    pub month: String,
+    pub description: String,
+    pub btg_category: String,
+    #[serde(with = "rust_decimal::serde::str")]
+    pub amount: Decimal,
+    pub kind: String,     // "income" | "expense"
+    pub category: String, // app category (BTG fallback)
+    pub included: bool,
+    pub reason: String, // "" | "fatura" | "salario" | "interno"
+}
+
+/// Result of parsing a statement file.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ParsedStatement {
+    pub holder: String,
+    pub account: String,
+    pub entries: Vec<RawEntry>,
+}
+
+/// Uppercase, strip accents, collapse whitespace — for robust name/keyword matching.
+fn norm(s: &str) -> String {
+    let folded: String = s
+        .chars()
+        .map(|c| match c {
+            'á' | 'à' | 'â' | 'ã' | 'ä' | 'Á' | 'À' | 'Â' | 'Ã' | 'Ä' => 'A',
+            'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => 'E',
+            'í' | 'ì' | 'î' | 'ï' | 'Í' | 'Ì' | 'Î' | 'Ï' => 'I',
+            'ó' | 'ò' | 'ô' | 'õ' | 'ö' | 'Ó' | 'Ò' | 'Ô' | 'Õ' | 'Ö' => 'O',
+            'ú' | 'ù' | 'û' | 'ü' | 'Ú' | 'Ù' | 'Û' | 'Ü' => 'U',
+            'ç' | 'Ç' => 'C',
+            other => other.to_ascii_uppercase(),
+        })
+        .collect();
+    folded.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn parse_amount(s: &str) -> Option<Decimal> {
+    let t = s.trim();
+    if t.is_empty() {
+        return None;
+    }
+    Decimal::from_str(t)
+        .ok()
+        .or_else(|| Decimal::from_str(&t.replace('.', "").replace(',', ".")).ok())
+}
+
+/// "01/01/2026 13:06" (or just "01/01/2026") → ("2026-01-01", "2026-01").
+fn parse_date(s: &str) -> Option<(String, String)> {
+    let d = s.split_whitespace().next()?; // date part
+    let p: Vec<&str> = d.split('/').collect();
+    if p.len() != 3 {
+        return None;
+    }
+    let (dd, mm, yyyy) = (p[0], p[1], p[2]);
+    if dd.len() != 2 || mm.len() != 2 || yyyy.len() != 4 || !yyyy.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    Some((format!("{yyyy}-{mm}-{dd}"), format!("{yyyy}-{mm}")))
+}
+
+fn cell(row: &[String], idx: Option<usize>) -> String {
+    idx.and_then(|i| row.get(i)).map(|s| s.trim().to_string()).unwrap_or_default()
+}
+
+/// Parse statement rows (already stringified) into holder + account + entries.
+pub fn parse_statement_rows(rows: &[Vec<String>]) -> ParsedStatement {
+    let mut out = ParsedStatement::default();
+    // Metadata: "Cliente:" / "Conta:"
+    for r in rows {
+        let k = norm(r.first().map(|s| s.as_str()).unwrap_or(""));
+        if k.starts_with("CLIENTE") && out.holder.is_empty() {
+            out.holder = r.get(1).cloned().unwrap_or_default().trim().to_string();
+        } else if k.starts_with("CONTA") && out.account.is_empty() {
+            out.account = r.get(1).cloned().unwrap_or_default().trim().to_string();
+        }
+    }
+    // Header row: contains "Data e hora" and "Valor".
+    let mut cols = None;
+    let mut header_idx = 0;
+    for (i, r) in rows.iter().enumerate() {
+        let norms: Vec<String> = r.iter().map(|c| norm(c)).collect();
+        let find = |name: &str| norms.iter().position(|c| c == name);
+        if norms.iter().any(|c| c == "DATA E HORA") && norms.iter().any(|c| c == "VALOR") {
+            cols = Some((
+                find("DATA E HORA"),
+                find("CATEGORIA"),
+                find("TRANSACAO"),
+                find("DESCRICAO"),
+                find("VALOR"),
+            ));
+            header_idx = i;
+            break;
+        }
+    }
+    let Some((c_date, c_cat, c_trans, c_desc, c_val)) = cols else {
+        return out;
+    };
+
+    for r in rows.iter().skip(header_idx + 1) {
+        let desc = cell(r, c_desc);
+        if norm(&desc) == "SALDO DIARIO" {
+            continue;
+        }
+        let date_raw = cell(r, c_date);
+        let Some((date, month)) = parse_date(&date_raw) else {
+            continue;
+        };
+        let Some(amount) = parse_amount(&cell(r, c_val)) else {
+            continue;
+        };
+        out.entries.push(RawEntry {
+            date,
+            month,
+            btg_category: cell(r, c_cat),
+            transaction: cell(r, c_trans),
+            description: desc,
+            amount,
+        });
+    }
+    out
+}
+
+/// Deterministic id so re-importing the same line does not duplicate it.
+pub fn entry_id(account: &str, e: &RawEntry) -> String {
+    let key = format!("bank:{}:{}:{}:{}", account, e.date, norm(&e.description), e.amount);
+    Uuid::new_v5(&Uuid::NAMESPACE_OID, key.as_bytes()).to_string()
+}
+
+/// Classify one entry: kind, category, and whether it is excluded (and why).
+pub fn classify_entry(
+    e: &RawEntry,
+    account: &str,
+    holder_norm: &str,
+    has_payslip_month: bool,
+    categorizer: &Categorizer,
+) -> ClassifiedEntry {
+    let kind = if e.amount < Decimal::ZERO { "expense" } else { "income" };
+    let ntrans = norm(&e.transaction);
+    let ndesc = norm(&e.description);
+    let ncat = norm(&e.btg_category);
+
+    let is_card = ntrans.contains("FATURA DO CART") || ndesc.contains("FATURA DO CART");
+    let is_salary = (ncat == "SALARIO" || ntrans.contains("SALARIO")) && has_payslip_month;
+    let is_internal = !holder_norm.is_empty()
+        && (ndesc == holder_norm || ndesc.contains(holder_norm) || holder_norm.contains(&ndesc));
+
+    let (included, reason) = if is_card {
+        (false, "fatura")
+    } else if is_salary {
+        (false, "salario")
+    } else if is_internal {
+        (false, "interno")
+    } else {
+        (true, "")
+    };
+
+    // Category: app rules on the description; fall back to the BTG category.
+    let mut category = categorizer.categorize(&e.description);
+    if category == "Outros" && !e.btg_category.trim().is_empty() {
+        category = e.btg_category.trim().to_string();
+    }
+
+    ClassifiedEntry {
+        id: entry_id(account, e),
+        date: e.date.clone(),
+        month: e.month.clone(),
+        description: e.description.clone(),
+        btg_category: e.btg_category.clone(),
+        amount: e.amount,
+        kind: kind.to_string(),
+        category,
+        included,
+        reason: reason.to_string(),
+    }
+}
+
+/// Normalized holder name for matching (exposed for the command layer).
+pub fn holder_key(holder: &str) -> String {
+    norm(holder)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rows() -> Vec<Vec<String>> {
+        let r = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        vec![
+            r(&["Cliente:", "Paulo Sérgio Dos Santos Júnior"]),
+            r(&["Conta:", "286969-2"]),
+            r(&["Data e hora", "Categoria", "Transação", "", "", "Descrição", "", "", "", "Valor"]),
+            r(&["01/01/2026 13:06", "Transferência", "Transferência recebida", "", "", "Paulo Sergio Dos Santos Junior", "", "", "", "6000"]),
+            r(&["01/01/2026 13:32", "Cuidados Pessoais", "Pix enviado", "", "", "Ln Sports", "", "", "", "-340"]),
+            r(&["02/01/2026 10:20", "Salário", "Portabilidade de salário", "", "", "Pagamento recebido", "", "", "", "41659.08"]),
+            r(&["02/01/2026 14:46", "Contas", "Pagamento de fatura do cartão", "", "", "Fatura do cartão BTG Pactual", "", "", "", "-10803.36"]),
+            r(&["01/01/2026 23:59", "", "", "", "", "Saldo Diário", "", "", "", "5160"]),
+            r(&["", "", "", "", "", "", "", "", "", ""]),
+        ]
+    }
+
+    #[test]
+    fn parses_holder_account_and_skips_noise() {
+        let p = parse_statement_rows(&rows());
+        assert_eq!(p.account, "286969-2");
+        assert!(p.holder.contains("Paulo"));
+        // 4 real entries (saldo diário + blank skipped)
+        assert_eq!(p.entries.len(), 4);
+        assert_eq!(p.entries[0].month, "2026-01");
+        assert_eq!(p.entries[1].description, "Ln Sports");
+    }
+
+    #[test]
+    fn classifies_and_excludes() {
+        let p = parse_statement_rows(&rows());
+        let cz = Categorizer::with_defaults();
+        let hk = holder_key(&p.holder);
+        let cl: Vec<_> = p.entries.iter().map(|e| classify_entry(e, &p.account, &hk, true, &cz)).collect();
+
+        // internal transfer (desc = holder, no accents) → excluded
+        assert!(!cl[0].included && cl[0].reason == "interno");
+        // Ln Sports debit → included, expense, BTG fallback category
+        assert!(cl[1].included && cl[1].kind == "expense");
+        assert_eq!(cl[1].category, "Cuidados Pessoais");
+        // salary with payslip → excluded
+        assert!(!cl[2].included && cl[2].reason == "salario");
+        // card bill → excluded
+        assert!(!cl[3].included && cl[3].reason == "fatura");
+    }
+
+    #[test]
+    fn salary_kept_when_no_payslip() {
+        let p = parse_statement_rows(&rows());
+        let cz = Categorizer::with_defaults();
+        let hk = holder_key(&p.holder);
+        let salary = classify_entry(&p.entries[2], &p.account, &hk, false, &cz);
+        assert!(salary.included && salary.kind == "income");
+    }
+
+    #[test]
+    fn dedup_id_is_stable() {
+        let p = parse_statement_rows(&rows());
+        let a = entry_id(&p.account, &p.entries[1]);
+        let b = entry_id(&p.account, &p.entries[1]);
+        assert_eq!(a, b);
+        assert_ne!(a, entry_id(&p.account, &p.entries[2]));
+    }
+}
