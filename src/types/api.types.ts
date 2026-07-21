@@ -85,10 +85,16 @@ export interface IpcaHeadline {
   twelve: string;
 }
 
+export interface IpcaPoint {
+  month: string; // "YYYY-MM"
+  value: string;
+}
+
 export interface InflationData {
   available: boolean;
   headline: IpcaHeadline | null;
   groups: IpcaGroup[];
+  series: IpcaPoint[];
   personal_month: string;
   personal_diff: string;
   fetched_at: string;
