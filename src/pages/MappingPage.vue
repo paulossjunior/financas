@@ -2,7 +2,6 @@
 import { onMounted, ref, reactive, computed, watch } from "vue";
 import { useInvoiceStore } from "@/stores/invoice.store";
 import { useSettingsStore } from "@/stores/settings.store";
-import type { Transaction } from "@/types/api.types";
 
 const store = useInvoiceStore();
 const settings = useSettingsStore();
@@ -19,13 +18,30 @@ const outrosList = computed(() =>
 );
 const outrosSum = computed(() => outrosList.value.reduce((a, t) => a + num(t.amount), 0));
 
-// per-row drafts: { [txId]: { cat, kw } }
+// Group uncategorized transactions by merchant (same derived keyword), largest first.
+// One row per merchant → categorizar uma vez aplica a todos os iguais.
+interface OutroGroup { key: string; count: number; sum: number; sample: string; date: string; }
+const outrosGroups = computed<OutroGroup[]>(() => {
+  const m = new Map<string, OutroGroup>();
+  for (const t of outrosList.value) { // outrosList already sorted by amount desc
+    const k = merchantKey(t.description);
+    if (!k) continue;
+    if (!m.has(k)) m.set(k, { key: k, count: 0, sum: 0, sample: t.description, date: t.date });
+    const g = m.get(k)!;
+    g.count++;
+    g.sum += num(t.amount);
+    if (t.date > g.date) g.date = t.date; // most recent occurrence
+  }
+  return [...m.values()].sort((a, b) => b.sum - a.sum);
+});
+
+// per-merchant drafts: { [merchantKey]: { cat, kw } }
 const drafts = reactive<Record<string, { cat: string; kw: string }>>({});
 watch(
-  outrosList,
-  (list) => {
-    for (const t of list) {
-      if (!drafts[t.id]) drafts[t.id] = { cat: "", kw: deriveKeyword(t.description) };
+  outrosGroups,
+  (groups) => {
+    for (const g of groups) {
+      if (!drafts[g.key]) drafts[g.key] = { cat: "", kw: g.key };
     }
   },
   { immediate: true }
@@ -68,12 +84,12 @@ onMounted(async () => {
   await store.loadAllTransactions();
 });
 
-async function apply(tx: Transaction): Promise<void> {
+async function apply(g: OutroGroup): Promise<void> {
   rowError.value = null;
   okMsg.value = null;
-  const dr = drafts[tx.id];
+  const dr = drafts[g.key];
   if (!dr || !dr.cat.trim()) { rowError.value = "Escolha uma categoria."; return; }
-  const kw = (dr.kw || "").trim() || deriveKeyword(tx.description);
+  const kw = (dr.kw || "").trim() || g.key;
   try {
     const changed = await store.mapKeyword(kw, dr.cat.trim());
     okMsg.value = `"${kw}" → ${dr.cat.trim()} · ${changed} lançamento(s) recategorizado(s).`;
@@ -112,7 +128,7 @@ function shortDate(iso: string): string {
     <div class="stats">
       <div class="card stat flag-amber">
         <div class="l">Sem categoria ("Outros")</div>
-        <div class="v">{{ outrosList.length }} <span class="u">lançamentos</span></div>
+        <div class="v">{{ outrosGroups.length }} <span class="u">lojistas · {{ outrosList.length }} lançamentos</span></div>
       </div>
       <div class="card stat flag-red">
         <div class="l">Valor invisível</div>
@@ -128,22 +144,25 @@ function shortDate(iso: string): string {
     <h2>Fila do "Outros" <span class="anno">maior valor primeiro · categorizar = vira palavra-chave</span></h2>
     <div class="card pad">
       <div v-if="!outrosList.length" class="empty-line">🎉 Tudo categorizado! Nenhum lançamento em "Outros".</div>
-      <div v-for="tx in outrosList" :key="tx.id" class="row">
+      <div v-for="g in outrosGroups" :key="g.key" class="row">
         <div class="info">
-          <div class="desc">{{ tx.description }}</div>
-          <div class="meta">{{ shortDate(tx.date) }}</div>
+          <div class="desc">{{ g.sample }}</div>
+          <div class="meta">
+            <span class="badge-count">{{ g.count }}×</span>
+            {{ g.count > 1 ? "lançamentos" : "lançamento" }} · até {{ shortDate(g.date) }}
+          </div>
         </div>
-        <div class="amt">{{ fmt(tx.amount) }}</div>
-        <div class="assign" v-if="drafts[tx.id]">
+        <div class="amt">{{ fmt(g.sum) }}</div>
+        <div class="assign" v-if="drafts[g.key]">
           <input
-            v-model="drafts[tx.id].cat"
+            v-model="drafts[g.key].cat"
             list="cats"
             class="in cat"
             placeholder="Categoria…"
           />
           <span class="arrow">·</span>
-          <input v-model="drafts[tx.id].kw" class="in kw" title="Palavra-chave (editável)" />
-          <button class="btn" :disabled="store.loading" @click="apply(tx)">Aplicar</button>
+          <input v-model="drafts[g.key].kw" class="in kw" title="Palavra-chave (editável)" />
+          <button class="btn" :disabled="store.loading" @click="apply(g)">Aplicar</button>
         </div>
       </div>
       <datalist id="cats">
@@ -182,7 +201,7 @@ function shortDate(iso: string): string {
   --accent: var(--clr-accent); --accent-soft: var(--clr-accent-light); --amber: var(--clr-amber);
   --red: var(--clr-negative); --red-soft: var(--clr-red-soft); --track: var(--clr-track);
   --radius: var(--radius-lg); --shadow: var(--shadow-sm);
-  padding: 1.75rem 2rem 4rem; max-width: 1160px; margin: 0 auto; color: var(--ink); font-variant-numeric: tabular-nums;
+  padding: 1.75rem 2rem 4rem; max-width: 1320px; margin: 0 auto; color: var(--ink); font-variant-numeric: tabular-nums;
 }
 .top { margin-bottom: 1.25rem; }
 .eyebrow { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 6px; }
@@ -215,6 +234,7 @@ h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .info { min-width: 0; }
 .desc { font-size: 13.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meta { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+.badge-count { display: inline-block; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 100px; padding: 0 7px; margin-right: 4px; }
 .amt { font-size: 14px; font-weight: 700; white-space: nowrap; }
 .assign { display: flex; align-items: center; gap: 8px; }
 .in { font-family: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); outline: none; }
