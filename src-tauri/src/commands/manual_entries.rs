@@ -38,6 +38,7 @@ pub async fn add_manual_entry(
     category: String,
     month: String,
     recurring: bool,
+    is_salary: Option<bool>,
     config: State<'_, Mutex<AppConfig>>,
     db: State<'_, SharedDb>,
 ) -> Result<ManualEntry, String> {
@@ -45,7 +46,7 @@ pub async fn add_manual_entry(
         .map_err(|_| "Valor inválido.".to_string())?;
     validate(&description, amount, &category)?;
 
-    let entry = ManualEntry::new(
+    let mut entry = ManualEntry::new(
         kind,
         description.trim().to_string(),
         amount,
@@ -53,6 +54,7 @@ pub async fn add_manual_entry(
         month,
         recurring,
     );
+    entry.is_salary = is_salary.unwrap_or(true);
 
     let snapshot = {
         let mut cfg = config.lock().map_err(|e| e.to_string())?;
@@ -73,6 +75,7 @@ pub async fn update_manual_entry(
     category: String,
     month: String,
     recurring: bool,
+    is_salary: Option<bool>,
     config: State<'_, Mutex<AppConfig>>,
     db: State<'_, SharedDb>,
 ) -> Result<ManualEntry, String> {
@@ -94,6 +97,7 @@ pub async fn update_manual_entry(
         entry.category = category.trim().to_string();
         entry.month = month;
         entry.recurring = recurring;
+        entry.is_salary = is_salary.unwrap_or(true);
         (entry.clone(), cfg.clone())
     };
     persist_config(&db, &snapshot)?;

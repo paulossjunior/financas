@@ -41,6 +41,16 @@ pub struct YearSummary {
     pub categories: Vec<Category>,
     /// All calendar years present in the data (desc), for the year filter — never affected by `year`.
     pub available_years: Vec<i32>,
+    /// All recurring monthly income (base "renda recorrente" for the ceiling).
+    pub salary_month: String,
+    /// Recurring income flagged as salary (base "só salário").
+    pub salary_only: String,
+    /// Recurring monthly fixed expenses.
+    pub fixed_month: String,
+    /// Ceiling with all recurring income = max(0, salary_month − fixed_month).
+    pub card_ceiling: String,
+    /// Ceiling with only salary-flagged income = max(0, salary_only − fixed_month).
+    pub card_ceiling_salary: String,
 }
 
 /// Build the annual view. Unlike the monthly dashboard (grouped by invoice reference
@@ -144,6 +154,22 @@ pub fn compute_year_summary(
         });
     }
 
+    // Card ceiling: recurring salary − recurring fixed costs (monthly, year-independent).
+    let salary_month: Decimal = manual
+        .iter()
+        .filter(|e| e.kind == EntryKind::Income && e.recurring)
+        .fold(dec!(0), |a, e| a + e.amount);
+    let salary_only: Decimal = manual
+        .iter()
+        .filter(|e| e.kind == EntryKind::Income && e.recurring && e.is_salary)
+        .fold(dec!(0), |a, e| a + e.amount);
+    let fixed_month: Decimal = manual
+        .iter()
+        .filter(|e| e.kind == EntryKind::Expense && e.recurring)
+        .fold(dec!(0), |a, e| a + e.amount);
+    let card_ceiling = (salary_month - fixed_month).max(dec!(0));
+    let card_ceiling_salary = (salary_only - fixed_month).max(dec!(0));
+
     let expense_total = card_total + fixed_total;
     let balance_total = income_total - expense_total;
     let active = scope.len().max(1) as i64;
@@ -174,6 +200,11 @@ pub fn compute_year_summary(
         tx_count: card_txs.len() as u32,
         categories,
         available_years,
+        salary_month: salary_month.to_string(),
+        salary_only: salary_only.to_string(),
+        fixed_month: fixed_month.to_string(),
+        card_ceiling: card_ceiling.to_string(),
+        card_ceiling_salary: card_ceiling_salary.to_string(),
     }
 }
 
@@ -250,6 +281,41 @@ mod tests {
         assert_eq!(y.biggest_month_value, "4950");
         // savings 7100/16000 ≈ 0.44
         assert!((y.savings_rate - 0.44375).abs() < 1e-6);
+        // Card ceiling = recurring salary 8000 − recurring fixed 2950 = 5050.
+        assert_eq!(y.salary_month, "8000");
+        assert_eq!(y.fixed_month, "2950");
+        assert_eq!(y.card_ceiling, "5050");
+    }
+
+    #[test]
+    fn two_bases_all_recurring_vs_primary_salary() {
+        let inv = invoice_with(&[("2026-06-10", dec!(100))]);
+        let mut bolsa = entry(EntryKind::Income, dec!(4500), "Bolsa", "2026-06", true);
+        bolsa.is_salary = false; // flagged as bonus
+        let manual = vec![
+            entry(EntryKind::Income, dec!(11000), "Salário", "2026-06", true), // is_salary=true
+            bolsa,
+            entry(EntryKind::Expense, dec!(10590), "Fixos", "2026-06", true),
+        ];
+        let y = compute_year_summary(&[inv], &manual, None);
+        assert_eq!(y.salary_month, "15500"); // all recurring income
+        assert_eq!(y.salary_only, "11000"); // only salary-flagged income
+        assert_eq!(y.card_ceiling, "4910"); // 15500 − 10590
+        assert_eq!(y.card_ceiling_salary, "410"); // 11000 − 10590
+    }
+
+    #[test]
+    fn card_ceiling_floors_at_zero_and_ignores_one_offs() {
+        let inv = invoice_with(&[("2026-06-10", dec!(100))]);
+        let manual = vec![
+            entry(EntryKind::Income, dec!(3000), "Salário", "2026-06", true), // recurring salary
+            entry(EntryKind::Income, dec!(5000), "Bônus", "2026-06", false),  // one-off, ignored
+            entry(EntryKind::Expense, dec!(4000), "Aluguel", "2026-06", true), // fixed > salary
+        ];
+        let y = compute_year_summary(&[inv], &manual, None);
+        assert_eq!(y.salary_month, "3000"); // one-off bônus excluded
+        assert_eq!(y.fixed_month, "4000");
+        assert_eq!(y.card_ceiling, "0"); // floored at 0 (fixed exceed salary)
     }
 
     #[test]

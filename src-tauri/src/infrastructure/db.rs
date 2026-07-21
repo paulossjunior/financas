@@ -86,11 +86,25 @@ impl Database {
                     amount      TEXT NOT NULL,
                     category    TEXT NOT NULL,
                     month       TEXT NOT NULL,
-                    recurring   INTEGER NOT NULL
+                    recurring   INTEGER NOT NULL,
+                    is_salary   INTEGER NOT NULL DEFAULT 1
                 );
                 ",
             )
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+
+        // Migrate pre-existing databases created before is_salary existed.
+        // ADD COLUMN errors with "duplicate column name" when already present — ignore that.
+        if let Err(e) = self
+            .conn
+            .execute("ALTER TABLE manual_entries ADD COLUMN is_salary INTEGER NOT NULL DEFAULT 1", [])
+        {
+            let msg = e.to_string();
+            if !msg.contains("duplicate column") {
+                return Err(msg);
+            }
+        }
+        Ok(())
     }
 
     /// True when no config data is stored yet (fresh DB — triggers config.json migration).
@@ -148,8 +162,8 @@ impl Database {
 
         for e in &cfg.manual_entries {
             tx.execute(
-                "INSERT INTO manual_entries (id, kind, description, amount, category, month, recurring)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO manual_entries (id, kind, description, amount, category, month, recurring, is_salary)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     e.id.to_string(),
                     entry_kind_str(e.kind),
@@ -158,6 +172,7 @@ impl Database {
                     e.category,
                     e.month,
                     e.recurring as i64,
+                    e.is_salary as i64,
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -226,7 +241,7 @@ impl Database {
         // manual_entries
         let mut stmt = self
             .conn
-            .prepare("SELECT id, kind, description, amount, category, month, recurring FROM manual_entries")
+            .prepare("SELECT id, kind, description, amount, category, month, recurring, is_salary FROM manual_entries")
             .map_err(|e| e.to_string())?;
         let me_rows = stmt
             .query_map([], |row| {
@@ -238,12 +253,13 @@ impl Database {
                     row.get::<_, String>(4)?,
                     row.get::<_, String>(5)?,
                     row.get::<_, i64>(6)?,
+                    row.get::<_, i64>(7)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         let mut manual_entries = Vec::new();
         for r in me_rows {
-            let (id, kind, description, amount, category, month, recurring) =
+            let (id, kind, description, amount, category, month, recurring, is_salary) =
                 r.map_err(|e| e.to_string())?;
             manual_entries.push(ManualEntry {
                 id: Uuid::parse_str(&id).map_err(|e| e.to_string())?,
@@ -253,6 +269,7 @@ impl Database {
                 category,
                 month,
                 recurring: recurring != 0,
+                is_salary: is_salary != 0,
             });
         }
 

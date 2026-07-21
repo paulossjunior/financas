@@ -30,6 +30,14 @@ pub struct ManualEntry {
     /// When true the entry counts once for every month in the dashboard scope
     /// (a fixed monthly cost / recurring income). When false it counts only for `month`.
     pub recurring: bool,
+    /// For income only: true = salary, false = bonus/extra. Drives the "só salário"
+    /// card-ceiling base. Ignored for expenses. Defaults to true for older data.
+    #[serde(default = "default_true")]
+    pub is_salary: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl ManualEntry {
@@ -49,6 +57,7 @@ impl ManualEntry {
             category,
             month,
             recurring,
+            is_salary: true,
         }
     }
 
