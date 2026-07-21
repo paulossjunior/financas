@@ -73,6 +73,32 @@ export interface MonthlySnapshot {
   categories: CategorySnapshot[];
 }
 
+export interface YearMonthPoint {
+  month: string;
+  income: string;
+  card: string;
+  fixed: string;
+  expense: string;
+  balance: string;
+}
+
+export interface YearSummary {
+  months: YearMonthPoint[];
+  income_total: string;
+  expense_total: string;
+  card_total: string;
+  fixed_total: string;
+  balance_total: string;
+  avg_expense: string;
+  biggest_month: string;
+  biggest_month_value: string;
+  savings_rate: number;
+  active_months: number;
+  tx_count: number;
+  categories: Category[];
+  available_years: number[];
+}
+
 export interface DashboardPeriod {
   from: string;
   to: string;
