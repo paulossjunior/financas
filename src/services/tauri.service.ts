@@ -74,10 +74,13 @@ export async function getDashboard(filter?: DashboardFilter): Promise<DashboardD
 }
 
 /** Whole-period annual view: monthly income vs expense, totals and category ranking.
- *  Pass a calendar year to filter; omit for all data. */
-export async function getYearSummary(year?: number): Promise<YearSummary> {
+ *  Pass a start and/or end calendar year to filter; omit both for all data. */
+export async function getYearSummary(yearFrom?: number, yearTo?: number): Promise<YearSummary> {
   try {
-    return await invoke<YearSummary>("get_year_summary_cmd", { year: year ?? null });
+    return await invoke<YearSummary>("get_year_summary_cmd", {
+      yearFrom: yearFrom ?? null,
+      yearTo: yearTo ?? null,
+    });
   } catch (e) {
     throw new Error(mapError(String(e)));
   }
