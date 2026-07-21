@@ -48,7 +48,7 @@ onErrorCaptured((err) => {
       <div class="nav-inner">
         <div class="brand"><span class="brand-mark">◍</span> Finanças</div>
         <div class="tabs">
-          <RouterLink to="/" active-class="active"><span class="ic">📊</span>Dashboard</RouterLink>
+          <RouterLink to="/" active-class="active"><span class="ic">📊</span>Mês</RouterLink>
           <RouterLink to="/ano" active-class="active"><span class="ic">📅</span>Ano</RouterLink>
           <RouterLink to="/transacoes" active-class="active"><span class="ic">🧾</span>Despesas</RouterLink>
           <RouterLink to="/receitas-fixos" active-class="active"><span class="ic">💰</span>Fixos &amp; Renda</RouterLink>
