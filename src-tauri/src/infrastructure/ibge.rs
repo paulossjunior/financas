@@ -10,12 +10,13 @@ use serde_json::Value;
 
 use crate::domain::inflation::{InflationCache, IpcaGroup, IpcaHeadline, IpcaPoint, IPCA_GROUPS};
 
+// URLs with special chars percent-encoded (|→%7C, [→%5B, ]→%5D) for strict clients/proxies.
 const HEADLINE_URL: &str =
-    "https://servicodados.ibge.gov.br/api/v3/agregados/1737/periodos/-1/variaveis/63|2265|69?localidades=N1[1]";
+    "https://servicodados.ibge.gov.br/api/v3/agregados/1737/periodos/-1/variaveis/63%7C2265%7C69?localidades=N1%5B1%5D";
 const GROUPS_URL: &str =
-    "https://servicodados.ibge.gov.br/api/v3/agregados/7060/periodos/-1/variaveis/63?localidades=N1[1]&classificacao=315[all]";
+    "https://servicodados.ibge.gov.br/api/v3/agregados/7060/periodos/-1/variaveis/63?localidades=N1%5B1%5D&classificacao=315%5Ball%5D";
 const SERIES_URL: &str =
-    "https://servicodados.ibge.gov.br/api/v3/agregados/1737/periodos/-13/variaveis/63?localidades=N1[1]";
+    "https://servicodados.ibge.gov.br/api/v3/agregados/1737/periodos/-13/variaveis/63?localidades=N1%5B1%5D";
 
 fn dec(s: &str) -> Decimal {
     Decimal::from_str(s.trim()).unwrap_or(Decimal::ZERO)
@@ -155,13 +156,27 @@ pub async fn fetch_inflation() -> Result<InflationCache, String> {
     let get = |url: &'static str| {
         let c = client.clone();
         async move {
-            c.get(url)
-                .send()
-                .await
-                .map_err(|e| format!("Falha ao acessar o IBGE: {e}"))?
-                .json::<Value>()
-                .await
-                .map_err(|e| format!("Resposta do IBGE inválida: {e}"))
+            // Retry once on transient transport errors (blips, throttling).
+            let mut last = String::new();
+            for attempt in 0..2 {
+                match c.get(url).send().await {
+                    Ok(resp) => {
+                        return resp
+                            .json::<Value>()
+                            .await
+                            .map_err(|e| format!("Resposta do IBGE inválida: {e}"));
+                    }
+                    Err(e) => {
+                        last = e.to_string();
+                        if attempt == 0 {
+                            tokio::time::sleep(Duration::from_millis(600)).await;
+                        }
+                    }
+                }
+            }
+            Err(format!(
+                "Não foi possível acessar o IBGE (sem internet ou serviço indisponível). O último índice salvo continua valendo. [{last}]"
+            ))
         }
     };
 
