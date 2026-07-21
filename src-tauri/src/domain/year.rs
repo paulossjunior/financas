@@ -154,9 +154,18 @@ pub fn compute_year_summary(
             }
         }
     }
-    // Real net income from payslips per month.
+    // Payslips: gross earnings become the month's income; each deduction becomes a
+    // categorized monthly expense (net emerges = gross − deductions − other expenses).
     for (m, p) in &payslip_by_month {
-        *income_by.entry(m.clone()).or_insert(dec!(0)) += p.net;
+        *income_by.entry(m.clone()).or_insert(dec!(0)) += p.real_gross;
+        let date = super::manual_entry::parse_month_start(m)
+            .unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap());
+        let inv = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, format!("payslip:{m}").as_bytes());
+        for it in p.items.iter().filter(|i| i.kind == "desconto" && !i.offsetting) {
+            *fixed_by.entry(m.clone()).or_insert(dec!(0)) += it.amount;
+            let cat = super::payslip::deduction_category(&it.description);
+            manual_expense_txs.push(Transaction::new(inv, 0, date, it.description.clone(), it.amount, cat, None));
+        }
     }
 
     // Per-month points, chronological (BTreeSet iterates sorted).
@@ -331,6 +340,34 @@ mod tests {
         assert_eq!(y.salary_month, "8000");
         assert_eq!(y.fixed_month, "2950");
         assert_eq!(y.card_ceiling, "5050");
+    }
+
+    fn payslip(month: &str, real_gross: Decimal, net: Decimal) -> crate::domain::payslip::Payslip {
+        use crate::domain::payslip::{Payslip, PayslipItem};
+        let ded = real_gross - net;
+        Payslip {
+            id: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, format!("payslip:{month}").as_bytes()),
+            month: month.into(),
+            gross: real_gross, real_gross, deductions: ded, net,
+            salary_liq: net, bonus_liq: dec!(0), ir_base: dec!(0), fgts: dec!(0),
+            items: vec![
+                PayslipItem { kind: "rendimento".into(), class: "salario".into(), description: "VENCIMENTO".into(), amount: real_gross, net_share: net, offsetting: false },
+                PayslipItem { kind: "desconto".into(), class: "recorrente".into(), description: "IMPOSTO DE RENDA RETIDO FONTE".into(), amount: ded, net_share: dec!(0), offsetting: false },
+            ],
+            source_file: "f.pdf".into(), imported_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn payslip_gross_is_income_and_deductions_are_expense() {
+        let inv = invoice_with(&[("2026-06-10", dec!(1000))]); // card 1000
+        let ps = payslip("2026-06", dec!(26856.04), dec!(18098.91)); // deduction = 8757.13
+        let y = compute_year_summary(&[inv], &[], &[ps], None, None);
+        assert_eq!(y.income_total, "26856.04"); // gross, not net
+        assert_eq!(y.expense_total, "9757.13"); // card 1000 + deduction 8757.13
+        assert_eq!(y.balance_total, "17098.91"); // == net 18098.91 − card 1000
+        // deduction shows up as a categorized monthly expense
+        assert!(y.categories.iter().any(|c| c.name == "Impostos"));
     }
 
     #[test]

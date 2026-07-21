@@ -47,26 +47,41 @@ pub fn get_dashboard(
         .collect();
     manual_agg.retain(|a| !(a.kind == EntryKind::Income && a.is_salary && payslip_months.contains(&a.month)));
     for p in payslips.iter().filter(|p| in_scope(&p.month)) {
-        manual_agg.push(payslip_income_agg(p));
+        manual_agg.extend(payslip_aggs(p));
     }
 
     Ok(compute_dashboard(&selected, &manual_agg, &filter))
 }
 
-/// Synthetic income aggregate carrying a payslip's net líquido for its month.
-fn payslip_income_agg(p: &Payslip) -> ManualAgg {
+/// Turn a payslip into month aggregates: gross earnings as income + each deduction
+/// (FUNPRESP, GEAP, PSS, IR…) as a categorized monthly expense. Net emerges as
+/// income − these expenses, so deductions show up as real monthly costs.
+fn payslip_aggs(p: &Payslip) -> Vec<ManualAgg> {
+    use crate::domain::payslip::deduction_category;
     let date = crate::domain::manual_entry::parse_month_start(&p.month)
         .unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap());
     let inv = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, format!("payslip:{}", p.month).as_bytes());
-    let tx = Transaction::new(inv, 0, date, "Salário (contracheque)".into(), p.net, "Salário".into(), None);
-    ManualAgg {
+
+    let mut out = vec![ManualAgg {
         kind: EntryKind::Income,
         month: p.month.clone(),
-        amount: p.net,
+        amount: p.real_gross,
         category: "Salário".into(),
-        tx,
+        tx: Transaction::new(inv, 0, date, "Salário bruto (contracheque)".into(), p.real_gross, "Salário".into(), None),
         is_salary: true,
+    }];
+    for it in p.items.iter().filter(|i| i.kind == "desconto" && !i.offsetting) {
+        let cat = deduction_category(&it.description);
+        out.push(ManualAgg {
+            kind: EntryKind::Expense,
+            month: p.month.clone(),
+            amount: it.amount,
+            category: cat.clone(),
+            tx: Transaction::new(inv, 0, date, it.description.clone(), it.amount, cat, None),
+            is_salary: false,
+        });
     }
+    out
 }
 
 /// Expand each manual entry into one ManualAgg per month it counts for.
