@@ -14,6 +14,7 @@ use commands::{
     dashboard::{get_dashboard_cmd, get_year_summary_cmd, list_invoices, remove_invoice},
     import::import_invoices,
     manual_entries::{add_manual_entry, list_manual_entries, remove_manual_entry, update_manual_entry},
+    payslips::{import_payslip, list_payslips, remove_payslip, save_payslip},
     secrets::{clear_saved_password, has_saved_password},
     transactions::list_all_transactions,
 };
@@ -75,6 +76,10 @@ pub fn run() {
             remove_manual_entry,
             has_saved_password,
             clear_saved_password,
+            import_payslip,
+            save_payslip,
+            list_payslips,
+            remove_payslip,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

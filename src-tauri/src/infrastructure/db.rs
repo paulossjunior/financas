@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use crate::domain::invoice::{Invoice, YearMonth};
 use crate::domain::manual_entry::{EntryKind, ManualEntry};
+use crate::domain::payslip::{Payslip, PayslipItem};
 use crate::domain::transaction::{InstallmentInfo, Transaction};
 use crate::domain::{AppConfig, CategoryRule};
 
@@ -89,6 +90,31 @@ impl Database {
                     recurring   INTEGER NOT NULL,
                     is_salary   INTEGER NOT NULL DEFAULT 1
                 );
+                CREATE TABLE IF NOT EXISTS payslips (
+                    id          TEXT PRIMARY KEY,
+                    month       TEXT NOT NULL UNIQUE,
+                    gross       TEXT NOT NULL,
+                    real_gross  TEXT NOT NULL,
+                    deductions  TEXT NOT NULL,
+                    net         TEXT NOT NULL,
+                    salary_liq  TEXT NOT NULL,
+                    bonus_liq   TEXT NOT NULL,
+                    ir_base     TEXT NOT NULL,
+                    fgts        TEXT NOT NULL,
+                    source_file TEXT NOT NULL,
+                    imported_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS payslip_items (
+                    payslip_id  TEXT NOT NULL,
+                    kind        TEXT NOT NULL,
+                    class       TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    amount      TEXT NOT NULL,
+                    net_share   TEXT NOT NULL,
+                    offsetting  INTEGER NOT NULL,
+                    FOREIGN KEY (payslip_id) REFERENCES payslips(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_pitems_payslip ON payslip_items(payslip_id);
                 ",
             )
             .map_err(|e| e.to_string())?;
@@ -413,6 +439,108 @@ impl Database {
             });
         }
         Ok(txs)
+    }
+
+    /// Insert or replace a payslip (keyed by its deterministic id / month) and its items.
+    pub fn save_payslip(&mut self, p: &Payslip) -> Result<(), String> {
+        let tx = self.conn.transaction().map_err(|e| e.to_string())?;
+        let id = p.id.to_string();
+        tx.execute("DELETE FROM payslip_items WHERE payslip_id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        // Same month may have a different id only in theory; clear by month too.
+        tx.execute("DELETE FROM payslips WHERE id = ?1 OR month = ?2", params![id, p.month])
+            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT INTO payslips (id, month, gross, real_gross, deductions, net, salary_liq, bonus_liq, ir_base, fgts, source_file, imported_at)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+            params![
+                id, p.month, p.gross.to_string(), p.real_gross.to_string(), p.deductions.to_string(),
+                p.net.to_string(), p.salary_liq.to_string(), p.bonus_liq.to_string(),
+                p.ir_base.to_string(), p.fgts.to_string(), p.source_file, p.imported_at,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        for it in &p.items {
+            tx.execute(
+                "INSERT INTO payslip_items (payslip_id, kind, class, description, amount, net_share, offsetting)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                params![id, it.kind, it.class, it.description, it.amount.to_string(), it.net_share.to_string(), it.offsetting as i64],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    /// Load all payslips (with items), most recent month first.
+    pub fn load_payslips(&self) -> Result<Vec<Payslip>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, month, gross, real_gross, deductions, net, salary_liq, bonus_liq, ir_base, fgts, source_file, imported_at FROM payslips ORDER BY month DESC")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?, r.get::<_, String>(7)?, r.get::<_, String>(8)?,
+                    r.get::<_, String>(9)?, r.get::<_, String>(10)?, r.get::<_, String>(11)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let dnum = |s: &str| Decimal::from_str(s).unwrap_or_default();
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, month, gross, real_gross, deductions, net, salary_liq, bonus_liq, ir_base, fgts, source_file, imported_at) =
+                row.map_err(|e| e.to_string())?;
+            let items = self.load_payslip_items(&id)?;
+            out.push(Payslip {
+                id: Uuid::parse_str(&id).map_err(|e| e.to_string())?,
+                month,
+                gross: dnum(&gross), real_gross: dnum(&real_gross), deductions: dnum(&deductions),
+                net: dnum(&net), salary_liq: dnum(&salary_liq), bonus_liq: dnum(&bonus_liq),
+                ir_base: dnum(&ir_base), fgts: dnum(&fgts),
+                items, source_file, imported_at,
+            });
+        }
+        Ok(out)
+    }
+
+    fn load_payslip_items(&self, payslip_id: &str) -> Result<Vec<PayslipItem>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT kind, class, description, amount, net_share, offsetting FROM payslip_items WHERE payslip_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![payslip_id], |r| {
+                Ok((
+                    r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, i64>(5)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut items = Vec::new();
+        for r in rows {
+            let (kind, class, description, amount, net_share, offsetting) = r.map_err(|e| e.to_string())?;
+            items.push(PayslipItem {
+                kind, class, description,
+                amount: Decimal::from_str(&amount).unwrap_or_default(),
+                net_share: Decimal::from_str(&net_share).unwrap_or_default(),
+                offsetting: offsetting != 0,
+            });
+        }
+        Ok(items)
+    }
+
+    /// Remove a payslip by month.
+    pub fn remove_payslip(&mut self, month: &str) -> Result<(), String> {
+        let tx = self.conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM payslip_items WHERE payslip_id IN (SELECT id FROM payslips WHERE month = ?1)",
+            params![month],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM payslips WHERE month = ?1", params![month]).map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
     }
 }
 
