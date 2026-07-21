@@ -14,6 +14,8 @@ src-tauri/gen/
 # User data
 faturas/
 tests/fixtures/*.xlsx
+# ...but keep the synthetic test fixture (no real data) so CI can run the parser tests
+!tests/fixtures/sample_fatura.xlsx
 
 # Test artifacts
 test-results/
