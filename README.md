@@ -12,9 +12,16 @@ Aplicativo desktop de finanças pessoais — importa faturas do cartão **BTG** 
 
 ## O que faz
 
-**Importação**
+**Importação** (aba **📥 Importações**: Faturas · Extrato · Contracheque)
 - Faturas **BTG** em `.xlsx` (inclusive **cifradas** — senha guardada no keychain do SO).
 - **Contracheque SouGov.br** (PDF): extrai e classifica tudo — salário × bônus (inclui "Cargo de Direção – CD" como bônus temporário), descontos (IR, GEAP, FUNPRESP, PSS), detecção de "wash" (adiantamentos que se anulam) e líquido por item. Importa vários de uma vez.
+- **Extrato bancário** (.xls): lê crédito/débito, **categoriza** (regras do app + fallback do banco), **exclui** o que já é contado (fatura do cartão, salário com contracheque, transferências internas), com **prévia** e **dedup**. Entra no painel como avulso/renda.
+
+**Previsão do cartão**
+- Gráfico da **projeção de pagamento** dos próximos meses a partir dos parcelamentos já feitos (Ano completo, Mês resumido) + tabela de valores a pagar.
+
+**Extratos & Faturas** (dashboard)
+- Panorama das movimentações: entradas/saídas do extrato + gasto no cartão, mês a mês, com ranking de categorias combinado.
 
 **Painel do mês**
 - KPIs: receita, despesa total, saldo, líquido do contracheque, descontos, bônus.
@@ -36,6 +43,7 @@ Aplicativo desktop de finanças pessoais — importa faturas do cartão **BTG** 
 
 **Inflação**
 - **IPCA oficial** (mês, ano, 12 meses) + **inflação pessoal** e o IPCA mensal no gráfico do ano. Índices vêm do IBGE por um botão **"Atualizar índices"** (opt-in) e ficam **salvos localmente** (offline depois). Veja [como a inflação pessoal é calculada](#como-a-inflação-pessoal-é-calculada).
+- **Explicador (para leigo)**: traduz IPCA + inflação pessoal em reais — projeção dos gastos (12m/3a/5a), poder de compra da renda, você vs. IPCA, quanto vale R$ 100.
 
 ---
 
