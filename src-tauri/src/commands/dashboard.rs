@@ -6,7 +6,7 @@ use tauri::State;
 use uuid::Uuid;
 
 use crate::application::{get_dashboard::get_dashboard, store::SharedStore};
-use crate::domain::{AppConfig, DashboardData, DashboardFilter};
+use crate::domain::{compute_year_summary, AppConfig, DashboardData, DashboardFilter, YearSummary};
 use crate::infrastructure::db::{persist, SharedDb};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -28,6 +28,17 @@ pub async fn get_dashboard_cmd(
     let manual_entries = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
     let store_lock = store.lock().map_err(|e| e.to_string())?;
     get_dashboard(&store_lock, &manual_entries, filter.unwrap_or_default())
+}
+
+#[tauri::command]
+pub async fn get_year_summary_cmd(
+    year: Option<i32>,
+    store: State<'_, SharedStore>,
+    config: State<'_, Mutex<AppConfig>>,
+) -> Result<YearSummary, String> {
+    let manual = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
+    let invoices = store.lock().map_err(|e| e.to_string())?.list_owned();
+    Ok(compute_year_summary(&invoices, &manual, year))
 }
 
 #[tauri::command]

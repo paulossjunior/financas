@@ -8,6 +8,7 @@ import type {
   InvoiceInfo,
   ManualEntry,
   Transaction,
+  YearSummary,
 } from "@/types/api.types";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -67,6 +68,16 @@ export async function clearSavedPassword(): Promise<void> {
 export async function getDashboard(filter?: DashboardFilter): Promise<DashboardData> {
   try {
     return await invoke<DashboardData>("get_dashboard_cmd", { filter });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+/** Whole-period annual view: monthly income vs expense, totals and category ranking.
+ *  Pass a calendar year to filter; omit for all data. */
+export async function getYearSummary(year?: number): Promise<YearSummary> {
+  try {
+    return await invoke<YearSummary>("get_year_summary_cmd", { year: year ?? null });
   } catch (e) {
     throw new Error(mapError(String(e)));
   }
