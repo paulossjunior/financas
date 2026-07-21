@@ -130,6 +130,11 @@ impl Database {
                 return Err(msg);
             }
         }
+        // Salary now comes from the payslip; manual income is always EXTRA (bolsa, rendimentos).
+        // Normalize any legacy salary-flagged income so it is never superseded by a payslip.
+        self.conn
+            .execute("UPDATE manual_entries SET is_salary = 0 WHERE kind = 'income'", [])
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 
