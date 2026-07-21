@@ -18,10 +18,11 @@ pub struct YearMonthPoint {
     pub month: String, // ISO "YYYY-MM"
     pub income: String,
     pub card: String,
-    pub fixed: String,
-    pub payroll: String, // payroll deductions (folha)
-    pub expense: String, // card + fixed + payroll
-    pub balance: String, // income − expense
+    pub fixed: String,    // recurring manual expenses
+    pub variable: String, // one-off (avulso) manual expenses
+    pub payroll: String,  // payroll deductions (folha)
+    pub expense: String,  // card + fixed + variable + payroll
+    pub balance: String,  // income − expense
 }
 
 /// Whole-period ("year") view: everything the annual dashboard needs in one shot.
@@ -32,6 +33,7 @@ pub struct YearSummary {
     pub expense_total: String,
     pub card_total: String,
     pub fixed_total: String,
+    pub variable_total: String,
     pub payroll_total: String,
     pub balance_total: String,
     pub avg_expense: String,
@@ -132,6 +134,7 @@ pub fn compute_year_summary(
     // for its month (avoid double counting); non-salary manual income (e.g. bolsa) still adds.
     let mut income_by: BTreeMap<String, Decimal> = BTreeMap::new();
     let mut fixed_by: BTreeMap<String, Decimal> = BTreeMap::new();
+    let mut variable_by: BTreeMap<String, Decimal> = BTreeMap::new();
     let mut payroll_by: BTreeMap<String, Decimal> = BTreeMap::new();
     let mut manual_expense_txs: Vec<Transaction> = Vec::new();
     for e in manual {
@@ -151,7 +154,11 @@ pub fn compute_year_summary(
                     }
                 }
                 EntryKind::Expense => {
-                    *fixed_by.entry(m.clone()).or_insert(dec!(0)) += e.amount;
+                    if e.recurring {
+                        *fixed_by.entry(m.clone()).or_insert(dec!(0)) += e.amount;
+                    } else {
+                        *variable_by.entry(m.clone()).or_insert(dec!(0)) += e.amount;
+                    }
                     manual_expense_txs.push(e.to_transaction(&m));
                 }
             }
@@ -175,17 +182,20 @@ pub fn compute_year_summary(
     let mut months: Vec<YearMonthPoint> = Vec::new();
     let mut card_total = dec!(0);
     let mut fixed_total = dec!(0);
+    let mut variable_total = dec!(0);
     let mut payroll_total = dec!(0);
     let mut income_total = dec!(0);
     let mut biggest = (String::new(), dec!(0));
     for m in &scope {
         let card = card_by.get(m).copied().unwrap_or(dec!(0));
         let fixed = fixed_by.get(m).copied().unwrap_or(dec!(0));
+        let variable = variable_by.get(m).copied().unwrap_or(dec!(0));
         let payroll = payroll_by.get(m).copied().unwrap_or(dec!(0));
         let income = income_by.get(m).copied().unwrap_or(dec!(0));
-        let expense = card + fixed + payroll;
+        let expense = card + fixed + variable + payroll;
         card_total += card;
         fixed_total += fixed;
+        variable_total += variable;
         payroll_total += payroll;
         income_total += income;
         if expense > biggest.1 {
@@ -196,6 +206,7 @@ pub fn compute_year_summary(
             income: income.to_string(),
             card: card.to_string(),
             fixed: fixed.to_string(),
+            variable: variable.to_string(),
             payroll: payroll.to_string(),
             expense: expense.to_string(),
             balance: (income - expense).to_string(),
@@ -232,7 +243,7 @@ pub fn compute_year_summary(
     let card_ceiling = (salary_month - fixed_month).max(dec!(0));
     let card_ceiling_salary = (salary_only - fixed_month).max(dec!(0));
 
-    let expense_total = card_total + fixed_total + payroll_total;
+    let expense_total = card_total + fixed_total + variable_total + payroll_total;
     let balance_total = income_total - expense_total;
     let active = scope.len().max(1) as i64;
     let avg_expense = (expense_total / Decimal::from(active)).round_dp(2);
@@ -253,6 +264,7 @@ pub fn compute_year_summary(
         expense_total: expense_total.to_string(),
         card_total: card_total.to_string(),
         fixed_total: fixed_total.to_string(),
+        variable_total: variable_total.to_string(),
         payroll_total: payroll_total.to_string(),
         balance_total: balance_total.to_string(),
         avg_expense: avg_expense.to_string(),

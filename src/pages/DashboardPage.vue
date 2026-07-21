@@ -4,7 +4,7 @@ import { useInvoiceStore } from "@/stores/invoice.store";
 import { useSettingsStore } from "@/stores/settings.store";
 import ImportButton from "@/components/import/ImportButton.vue";
 import ImportWarnings from "@/components/import/ImportWarnings.vue";
-import type { Category, ParseWarning, Payslip } from "@/types/api.types";
+import type { Category, ManualEntry, ParseWarning, Payslip } from "@/types/api.types";
 import { listPayslips } from "@/services/tauri.service";
 
 const store = useInvoiceStore();
@@ -38,6 +38,7 @@ const savingsRate = computed(() => (income.value > 0 ? (balance.value / income.v
 const cardPct = computed(() => (expense.value > 0 ? (cardNet.value / expense.value) * 100 : 0));
 const fixoPct = computed(() => (expense.value > 0 ? (fixo.value / expense.value) * 100 : 0));
 const payrollPct = computed(() => (expense.value > 0 ? (payrollDed.value / expense.value) * 100 : 0));
+const avulsoPct = computed(() => (expense.value > 0 ? (variableExpense.value / expense.value) * 100 : 0));
 
 const categories = computed<Category[]>(() =>
   (d.value?.categories ?? []).map((c) => ({ ...c, net_total: String(num(c.net_total) / divisor.value) }))
@@ -47,6 +48,14 @@ const topTransactions = computed(() => d.value?.top_transactions ?? []);
 const topMax = computed(() => Math.max(1, ...topTransactions.value.map((t) => num(t.amount))));
 
 const expenseEntries = computed(() => store.manualEntries.filter((e) => e.kind === "expense"));
+const fixedEntries = computed(() => expenseEntries.value.filter((e) => e.recurring));
+const avulsoList = computed(() =>
+  store.manualEntries.filter((e) => !e.recurring && (!store.monthFilter || e.month === store.monthFilter))
+);
+const variableExpense = computed(() => num(d.value?.total_variable_expense) / divisor.value);
+const avulsoIncome = computed(
+  () => avulsoList.value.filter((e) => e.kind === "income").reduce((s, e) => s + num(e.amount), 0) / divisor.value
+);
 const fixoCategories = computed(() => new Set(expenseEntries.value.map((e) => e.category)));
 
 // ── Payslip data for the selected scope (salary líquido, deductions) ──
@@ -226,6 +235,7 @@ onMounted(async () => {
 
 // Quick add: one-off debit/credit for the selected month (freelance, an unexpected bill…).
 const qaOpen = ref(false);
+const qaEditId = ref<string | null>(null);
 const qaKind = ref<"expense" | "income">("expense");
 const qaDesc = ref("");
 const qaAmount = ref("");
@@ -248,7 +258,7 @@ async function addQuick(): Promise<void> {
   if (!qaCat.value.trim()) { qaError.value = "Informe uma categoria."; return; }
   if (!(amt > 0)) { qaError.value = "Informe um valor maior que zero."; return; }
   try {
-    await store.addManualEntry({
+    const input = {
       kind: qaKind.value,
       description: qaDesc.value.trim(),
       amount: String(amt),
@@ -256,9 +266,42 @@ async function addQuick(): Promise<void> {
       month: qaMonth(),
       recurring: false,
       isSalary: false,
-    });
-    qaDesc.value = ""; qaAmount.value = ""; qaCat.value = "";
-    qaOpen.value = false;
+    };
+    if (qaEditId.value) {
+      await store.updateManualEntry(qaEditId.value, input);
+    } else {
+      await store.addManualEntry(input);
+    }
+    resetQuick();
+    await store.loadManualEntries();
+    await store.loadDashboard();
+  } catch (e) {
+    qaError.value = String(e instanceof Error ? e.message : e);
+  }
+}
+function resetQuick(): void {
+  qaEditId.value = null;
+  qaDesc.value = ""; qaAmount.value = ""; qaCat.value = "";
+  qaKind.value = "expense";
+  qaOpen.value = false;
+  qaError.value = null;
+}
+function toggleQuick(): void {
+  if (qaOpen.value) { resetQuick(); } else { qaOpen.value = true; }
+}
+function editAvulso(e: ManualEntry): void {
+  qaEditId.value = e.id;
+  qaKind.value = e.kind;
+  qaDesc.value = e.description;
+  qaAmount.value = e.amount;
+  qaCat.value = e.category;
+  qaError.value = null;
+  qaOpen.value = true;
+}
+async function removeAvulso(id: string): Promise<void> {
+  try {
+    await store.removeManualEntry(id);
+    if (qaEditId.value === id) resetQuick();
     await store.loadManualEntries();
     await store.loadDashboard();
   } catch (e) {
@@ -393,7 +436,7 @@ function refLabel(): string {
             <button type="button" :class="{ active: avgMode }" @click="avgMode = true">Média/mês</button>
           </div>
           <span v-else-if="d" class="period">{{ periodLabel() }}</span>
-          <button class="qa-btn" @click="qaOpen = !qaOpen">+ Lançamento avulso</button>
+          <button class="qa-btn" @click="toggleQuick">+ Lançamento avulso</button>
           <ImportButton @import-requested="handleImport" />
         </div>
       </div>
@@ -416,7 +459,8 @@ function refLabel(): string {
       <input v-model="qaCat" class="qa-in" type="text" list="qa-cats" placeholder="Categoria" @keyup.enter="addQuick" />
       <datalist id="qa-cats"><option v-for="c in qaSuggestions" :key="c" :value="c" /></datalist>
       <span class="qa-mes">{{ formatMonthFilter(qaMonth()) }}</span>
-      <button class="qa-add" :disabled="store.loading" @click="addQuick">Adicionar</button>
+      <button class="qa-add" :disabled="store.loading" @click="addQuick">{{ qaEditId ? "Salvar" : "Adicionar" }}</button>
+      <button v-if="qaEditId" class="qa-cancel" :disabled="store.loading" @click="resetQuick">Cancelar</button>
       <span v-if="qaError" class="qa-err">⚠ {{ qaError }}</span>
     </div>
 
@@ -494,7 +538,7 @@ function refLabel(): string {
           <div class="kpi">
             <p class="lbl">Custo total {{ scopeWord }}</p>
             <div class="val">{{ fmt(expense) }}</div>
-            <div class="foot">cartão {{ fmt0(cardNet) }} + fixos {{ fmt0(fixo) }}<template v-if="payrollDed > 0"> + descontos {{ fmt0(payrollDed) }}</template></div>
+            <div class="foot">cartão {{ fmt0(cardNet) }} + fixos {{ fmt0(fixo) }}<template v-if="variableExpense > 0"> + avulsos {{ fmt0(variableExpense) }}</template><template v-if="payrollDed > 0"> + descontos {{ fmt0(payrollDed) }}</template></div>
           </div>
           <div class="kpi">
             <p class="lbl">Contas fixas {{ scopeWord }}</p>
@@ -540,6 +584,9 @@ function refLabel(): string {
               <div class="seg seg-fixo" :style="{ flexGrow: fixo }" :title="`Fixos: ${fmt(fixo)}`">
                 <span v-if="fixoPct > 12">Fixos {{ fixoPct.toFixed(1) }}%</span>
               </div>
+              <div v-if="variableExpense > 0" class="seg seg-avulso" :style="{ flexGrow: variableExpense }" :title="`Avulsos: ${fmt(variableExpense)}`">
+                <span v-if="avulsoPct > 12">Avulsos {{ avulsoPct.toFixed(1) }}%</span>
+              </div>
               <div v-if="payrollDed > 0" class="seg seg-payroll" :style="{ flexGrow: payrollDed }" :title="`Descontos: ${fmt(payrollDed)}`">
                 <span v-if="payrollPct > 12">Descontos {{ payrollPct.toFixed(1) }}%</span>
               </div>
@@ -547,6 +594,7 @@ function refLabel(): string {
             <div class="legend">
               <span><i class="dot dot-card"></i> Cartão / variável — {{ fmt(cardNet) }}</span>
               <span><i class="dot dot-fixo"></i> Fixos — {{ fmt(fixo) }}</span>
+              <span v-if="variableExpense > 0"><i class="dot dot-avulso"></i> Avulsos — {{ fmt(variableExpense) }}</span>
               <span v-if="payrollDed > 0"><i class="dot dot-payroll"></i> Descontos da folha — {{ fmt(payrollDed) }}</span>
             </div>
             <p class="note">Regra de bolso saudável: fixos ≤ 50% da renda. Fique de olho no <b>valor absoluto</b> de água e energia.</p>
@@ -555,8 +603,8 @@ function refLabel(): string {
           <div class="card">
             <h3>Contas fixas — detalhe</h3>
             <p class="cap">Contas fixas mensais (sem descontos da folha). Água e energia sinalizadas como anomalia.</p>
-            <div v-if="expenseEntries.length" class="fixlist">
-              <div v-for="e in expenseEntries" :key="e.id" class="fixrow">
+            <div v-if="fixedEntries.length" class="fixlist">
+              <div v-for="e in fixedEntries" :key="e.id" class="fixrow">
                 <span class="fn" :class="{ hot: isUtil(e.description) && utilitiesHigh }">
                   {{ e.description }}
                   <span v-if="isUtil(e.description) && utilitiesHigh" class="badge-hot">alto</span>
@@ -569,6 +617,35 @@ function refLabel(): string {
               </div>
             </div>
             <p v-else class="cap">Nenhuma conta fixa. Cadastre em <strong>Fixos &amp; Renda</strong>.</p>
+          </div>
+
+          <div class="card" v-if="avulsoList.length">
+            <h3>Lançamentos avulsos — detalhe</h3>
+            <p class="cap">Débitos e créditos avulsos (não-recorrentes) deste mês. Passe o mouse para editar ou remover.</p>
+            <div class="fixlist">
+              <div v-for="e in avulsoList" :key="e.id" class="fixrow avrow">
+                <span class="fn">
+                  <span class="badge-kind" :class="e.kind">{{ e.kind === "income" ? "crédito" : "débito" }}</span>
+                  {{ e.description }}
+                  <small class="av-cat">{{ e.category }}</small>
+                </span>
+                <span class="avright">
+                  <b :class="{ 'green-text': e.kind === 'income' }">{{ e.kind === "income" ? "+" : "" }}{{ fmt(e.amount) }}</b>
+                  <span class="avactions">
+                    <button class="av-ic" title="Editar" @click="editAvulso(e)">✎</button>
+                    <button class="av-ic del" title="Remover" @click="removeAvulso(e.id)">✕</button>
+                  </span>
+                </span>
+              </div>
+              <div class="fixrow tot">
+                <span class="fn">Total despesas avulsas</span>
+                <b>{{ fmt(variableExpense) }}</b>
+              </div>
+              <div v-if="avulsoIncome > 0" class="fixrow tot">
+                <span class="fn">Total créditos avulsos</span>
+                <b class="green-text">+{{ fmt(avulsoIncome) }}</b>
+              </div>
+            </div>
           </div>
 
           <div class="card" v-if="deductionRows.length">
@@ -802,6 +879,7 @@ h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .flag-red { border-left-color: var(--red); }
 .ok-text { color: var(--accent); }
 .red-text { color: var(--red); }
+.green-text { color: var(--accent); }
 .amber-text { color: var(--amber); font-weight: 700; }
 .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-top: 8px; }
 .pill.warn { background: var(--amber-soft); color: var(--amber); }
@@ -819,12 +897,14 @@ h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .seg { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 700; min-width: 3px; white-space: nowrap; overflow: hidden; }
 .seg-card { background: var(--accent); }
 .seg-fixo { background: var(--amber); }
+.seg-avulso { background: var(--violet, #8b5cf6); }
 .seg-payroll { background: var(--red); }
 .legend { display: flex; gap: 18px; margin-top: 12px; font-size: 12.5px; color: var(--ink-2); flex-wrap: wrap; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .dot-card { background: var(--accent); }
 .dot-fixo { background: var(--amber); }
+.dot-avulso { background: var(--violet, #8b5cf6); }
 .dot-payroll { background: var(--red); }
 .note { margin-top: 16px; font-size: 12.5px; color: var(--ink-3); }
 .note b { color: var(--ink-2); }
@@ -839,6 +919,18 @@ h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .fixrow.tot { font-weight: 800; }
 .fixrow.tot .fn, .fixrow.tot b { color: var(--ink); font-weight: 800; }
 .badge-hot { font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; background: var(--red-soft); color: var(--red); }
+.badge-kind { font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; }
+.badge-kind.expense { background: var(--red-soft); color: var(--red); }
+.badge-kind.income { background: rgba(16, 185, 129, .14); color: var(--accent); }
+.av-cat { color: var(--ink-3, var(--ink-2)); font-size: 11.5px; font-weight: 600; margin-left: 4px; }
+.avrow { position: relative; }
+.avright { display: inline-flex; align-items: center; gap: 8px; }
+.avactions { display: inline-flex; gap: 4px; margin-left: 4px; opacity: 0; transition: opacity .12s; }
+.avrow:hover .avactions { opacity: 1; }
+.av-ic { font-family: inherit; font-size: 12px; line-height: 1; padding: 4px 7px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface, #fff); color: var(--ink-2); cursor: pointer; }
+.av-ic:hover { background: var(--track); }
+.av-ic.del:hover { background: var(--red-soft); color: var(--red); border-color: var(--red); }
+.qa-cancel { font-family: inherit; font-size: 13px; font-weight: 700; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink-2); cursor: pointer; }
 .badge-folha { font-size: 9.5px; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 4px; }
 
 /* Bars */

@@ -78,6 +78,7 @@ export interface YearMonthPoint {
   income: string;
   card: string;
   fixed: string;
+  variable: string;
   payroll: string;
   expense: string;
   balance: string;
@@ -89,6 +90,7 @@ export interface YearSummary {
   expense_total: string;
   card_total: string;
   fixed_total: string;
+  variable_total: string;
   payroll_total: string;
   balance_total: string;
   avg_expense: string;
@@ -144,8 +146,10 @@ export interface DashboardData {
   net_total: string;
   /** Card net only. */
   total_card_net: string;
-  /** Manual fixed expenses in scope (contas fixas — excludes payroll). */
+  /** Recurring manual fixed expenses in scope (contas fixas — excludes payroll). */
   total_manual_expense: string;
+  /** One-off (avulso) manual expenses in scope. */
+  total_variable_expense: string;
   /** Payroll deductions (folha) in scope. */
   total_payroll_deductions: string;
   /** Manual income (crédito) in scope. */
