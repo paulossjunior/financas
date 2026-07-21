@@ -167,7 +167,7 @@ function formatInstallment(t: Transaction): string {
 <style scoped>
 .page {
   padding: 1.5rem 2rem;
-  max-width: 1200px;
+  max-width: 1320px;
   margin: 0 auto;
 }
 

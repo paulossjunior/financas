@@ -177,7 +177,7 @@ onErrorCaptured((err) => {
   box-shadow: 0 1px 0 rgba(20,33,30,.02);
 }
 .nav-inner {
-  max-width: 1160px;
+  max-width: 1320px;
   margin: 0 auto;
   padding: 0 2rem;
   display: flex;
