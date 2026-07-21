@@ -18,8 +18,15 @@ const amount = ref("");
 const category = ref("");
 const month = ref(currentMonth());
 const recurring = ref(true);
+const repeatMonths = ref(1); // sporadic expense: repeat across N consecutive months
 const formError = ref<string | null>(null);
 const editingId = ref<string | null>(null);
+
+function addMonths(ym: string, n: number): string {
+  const [y, m] = ym.split("-").map(Number);
+  const idx = (y * 12 + (m - 1)) + n;
+  return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, "0")}`;
+}
 
 // Salary from the latest payslip (read-only here).
 const payslips = ref<Payslip[]>([]);
@@ -69,6 +76,7 @@ function resetForm(): void {
   category.value = "";
   month.value = currentMonth();
   recurring.value = true;
+  repeatMonths.value = 1;
   formError.value = null;
 }
 
@@ -91,22 +99,25 @@ async function submit(): Promise<void> {
   if (!category.value.trim()) { formError.value = "Informe uma categoria."; return; }
   if (!(amt > 0)) { formError.value = "Informe um valor maior que zero."; return; }
 
-  const input = {
+  const base = {
     kind: kind.value,
     description: description.value.trim(),
     amount: String(amt),
     category: category.value.trim(),
-    month: month.value,
     recurring: recurring.value,
     // Manual income here is always EXTRA (non-salary); salary comes from the payslip.
     isSalary: false,
   };
+  // Sporadic expense: repeat as one-off entries across N consecutive months.
+  const n = !recurring.value && !editingId.value ? Math.max(1, Math.min(60, Math.floor(repeatMonths.value) || 1)) : 1;
 
   try {
     if (editingId.value) {
-      await store.updateManualEntry(editingId.value, input);
+      await store.updateManualEntry(editingId.value, { ...base, month: month.value });
     } else {
-      await store.addManualEntry(input);
+      for (let i = 0; i < n; i++) {
+        await store.addManualEntry({ ...base, month: addMonths(month.value, i) });
+      }
     }
     resetForm();
   } catch (e) {
@@ -186,11 +197,20 @@ async function remove(id: string): Promise<void> {
           <input v-model="recurring" type="checkbox" />
           <span><strong>Fixo</strong> — mesmo valor todo mês (aluguel, internet, plano)</span>
         </label>
+
+        <label v-if="!recurring && !editingId" class="field field-repeat">
+          <span>Repetir por</span>
+          <div class="repeat-in">
+            <input v-model.number="repeatMonths" type="number" min="1" max="60" />
+            <span>{{ repeatMonths > 1 ? "meses" : "mês" }}</span>
+          </div>
+        </label>
       </div>
 
       <p class="hint-line">
-        💡 Contas que <strong>variam</strong> (água, luz, gás): <strong>desmarque "Fixo"</strong>, escolha o
-        <strong>mês</strong> e lance o valor real daquele mês. Todo mês você adiciona um novo lançamento com o valor da conta.
+        💡 <strong>Fixo</strong> = todo mês (aluguel, plano). <strong>Avulso/esporádico</strong> = desmarque "Fixo",
+        escolha o mês e, se durar alguns meses (ex.: psicólogo por 3 meses), use <strong>"Repetir por N meses"</strong>
+        — cria um lançamento em cada mês a partir do escolhido.
       </p>
 
       <div v-if="formError" class="form-error">⚠ {{ formError }}</div>
@@ -322,6 +342,10 @@ h2 { font-size: 0.9375rem; font-weight: 600; color: var(--clr-text-primary); mar
 .field-recurring { flex-direction: row; align-items: center; gap: 0.4rem; grid-column: 1 / -1; }
 .field-recurring span { font-size: 0.8125rem; color: var(--clr-text-secondary); text-transform: none; letter-spacing: 0; font-weight: 400; }
 .field-recurring input { width: 16px; height: 16px; accent-color: var(--clr-accent); }
+.field-repeat { grid-column: 1 / -1; }
+.repeat-in { display: flex; align-items: center; gap: .5rem; }
+.repeat-in input { width: 72px; padding: 0.45rem 0.75rem; border: 1px solid var(--clr-stroke); border-radius: var(--radius-md); font-size: 0.875rem; font-family: var(--font-body); color: var(--clr-text-primary); background: var(--clr-bg); outline: none; }
+.repeat-in span { font-size: 0.8125rem; color: var(--clr-text-secondary); }
 
 .hint-line { margin-top: 0.85rem; font-size: 0.8125rem; color: var(--clr-text-secondary); background: var(--clr-surface-alt); border: 1px solid var(--clr-stroke); border-radius: var(--radius-md); padding: 0.6rem 0.8rem; line-height: 1.5; }
 .hint-line strong { color: var(--clr-text-primary); font-weight: 700; }
