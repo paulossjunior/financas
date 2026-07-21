@@ -3,6 +3,7 @@ pub mod categorizer;
 pub mod dashboard;
 pub mod invoice;
 pub mod manual_entry;
+pub mod payslip;
 pub mod transaction;
 pub mod year;
 
@@ -11,6 +12,7 @@ pub use categorizer::{CategoryRule, Categorizer};
 pub use dashboard::{compute_dashboard, DashboardData, DashboardFilter};
 pub use invoice::{Invoice, YearMonth};
 pub use manual_entry::{EntryKind, ManualEntry};
+pub use payslip::{parse_payslip_text, Payslip, PayslipItem};
 pub use transaction::{InstallmentInfo, Transaction};
 pub use year::{compute_year_summary, YearSummary};
 
