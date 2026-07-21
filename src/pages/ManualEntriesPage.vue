@@ -2,12 +2,14 @@
 import { onMounted, ref, computed } from "vue";
 import { useInvoiceStore } from "@/stores/invoice.store";
 import { useSettingsStore } from "@/stores/settings.store";
-import type { EntryKind, ManualEntry } from "@/types/api.types";
+import { listPayslips } from "@/services/tauri.service";
+import type { EntryKind, ManualEntry, Payslip } from "@/types/api.types";
 
 const store = useInvoiceStore();
 const settings = useSettingsStore();
 
-const INCOME_SUGGESTIONS = ["Salário", "Bolsa de Pesquisa", "Rendimentos", "Freelance", "Aluguel Recebido", "Outros"];
+// Salary now comes from the payslip (Contracheque); manual income here is EXTRA income only.
+const INCOME_SUGGESTIONS = ["Bolsa de Pesquisa", "Rendimentos", "Freelance", "Aluguel Recebido", "Outros"];
 
 // ── form state ──
 const kind = ref<EntryKind>("expense");
@@ -16,9 +18,12 @@ const amount = ref("");
 const category = ref("");
 const month = ref(currentMonth());
 const recurring = ref(true);
-const isSalary = ref(true); // income only: salary vs bonus
 const formError = ref<string | null>(null);
 const editingId = ref<string | null>(null);
+
+// Salary from the latest payslip (read-only here).
+const payslips = ref<Payslip[]>([]);
+const latestPayslip = computed(() => payslips.value[0] ?? null); // list is month DESC
 
 function currentMonth(): string {
   const d = new Date();
@@ -54,6 +59,7 @@ function formatMonth(m: string): string {
 onMounted(async () => {
   await settings.loadConfig();
   await store.loadManualEntries();
+  try { payslips.value = await listPayslips(); } catch { /* ignore */ }
 });
 
 function resetForm(): void {
@@ -63,7 +69,6 @@ function resetForm(): void {
   category.value = "";
   month.value = currentMonth();
   recurring.value = true;
-  isSalary.value = true;
   formError.value = null;
 }
 
@@ -75,7 +80,6 @@ function startEdit(e: ManualEntry): void {
   category.value = e.category;
   month.value = e.month;
   recurring.value = e.recurring;
-  isSalary.value = e.is_salary;
   formError.value = null;
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -94,7 +98,8 @@ async function submit(): Promise<void> {
     category: category.value.trim(),
     month: month.value,
     recurring: recurring.value,
-    isSalary: kind.value === "income" ? isSalary.value : true,
+    // Manual income here is always EXTRA (non-salary); salary comes from the payslip.
+    isSalary: false,
   };
 
   try {
@@ -119,9 +124,19 @@ async function remove(id: string): Promise<void> {
   <div class="page">
     <div class="page-header">
       <div class="page-title">
-        <h1>Receitas & Despesas Fixas</h1>
-        <span class="subtitle">Lançamentos que não passam pelo cartão · fixos, variáveis e receitas</span>
+        <h1>Despesas Fixas & Renda Extra</h1>
+        <span class="subtitle">Contas fixas e renda que não é salário. O salário vem do Contracheque.</span>
       </div>
+    </div>
+
+    <!-- Salary from payslip (read-only) -->
+    <div class="salary-card">
+      <div class="sc-l">
+        <span class="sc-lbl">Salário (do contracheque)</span>
+        <span class="sc-val" v-if="latestPayslip">{{ formatBRL(latestPayslip.net) }} <small>líq · {{ formatMonth(latestPayslip.month) }}</small></span>
+        <span class="sc-val muted" v-else>nenhum contracheque importado</span>
+      </div>
+      <RouterLink class="sc-link" to="/contracheque">📄 {{ latestPayslip ? "Ver contracheques" : "Importar contracheque" }}</RouterLink>
     </div>
 
     <!-- Form -->
@@ -141,17 +156,12 @@ async function remove(id: string): Promise<void> {
         >↓ Despesa</button>
       </div>
 
-      <div v-if="kind === 'income'" class="salbonus">
-        <span class="sb-label">Tipo de receita:</span>
-        <button type="button" :class="['sb-btn', { active: isSalary }]" @click="isSalary = true">Salário</button>
-        <button type="button" :class="['sb-btn', { active: !isSalary }]" @click="isSalary = false">Bônus</button>
-        <span class="sb-hint">só o salário conta no teto do cartão</span>
-      </div>
+      <p v-if="kind === 'income'" class="income-note">Renda extra (bolsa, rendimentos, freelance). O salário é importado no <RouterLink to="/contracheque">Contracheque</RouterLink>.</p>
 
       <div class="form-grid">
         <label class="field field-desc">
           <span>Descrição</span>
-          <input v-model="description" type="text" :placeholder="kind === 'income' ? 'Ex: Salário' : 'Ex: Aluguel'" @keyup.enter="submit" />
+          <input v-model="description" type="text" :placeholder="kind === 'income' ? 'Ex: Bolsa de Pesquisa' : 'Ex: Aluguel'" @keyup.enter="submit" />
         </label>
 
         <label class="field">
@@ -206,7 +216,7 @@ async function remove(id: string): Promise<void> {
               <span class="entry-desc">{{ e.description }}</span>
               <span class="entry-meta">
                 <span class="chip">{{ e.category }}</span>
-                <span class="badge" :class="e.is_salary ? 'sal' : 'bon'">{{ e.is_salary ? "salário" : "bônus" }}</span>
+                <span v-if="e.is_salary" class="badge sal" title="O salário agora vem do contracheque — pode remover este lançamento">salário manual · use o contracheque</span>
                 <span class="badge">{{ e.recurring ? "fixo · todo mês" : formatMonth(e.month) }}</span>
               </span>
             </div>
@@ -253,6 +263,21 @@ async function remove(id: string): Promise<void> {
 .page-title { display: flex; flex-direction: column; gap: 0.25rem; }
 h1 { font-size: 1.25rem; font-weight: 600; color: var(--clr-text-primary); letter-spacing: -0.01em; }
 .subtitle { font-size: 0.8125rem; color: var(--clr-text-secondary); }
+
+.salary-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  background: var(--clr-accent-light); border: 1px solid var(--clr-accent);
+  border-radius: var(--radius-lg); padding: .8rem 1.1rem; margin-bottom: 1rem;
+}
+.sc-l { display: flex; flex-direction: column; gap: 2px; }
+.sc-lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--clr-accent); }
+.sc-val { font-size: 1.15rem; font-weight: 780; color: var(--clr-text-primary); }
+.sc-val small { font-size: .72rem; font-weight: 600; color: var(--clr-text-muted); }
+.sc-val.muted { font-size: .9rem; font-weight: 600; color: var(--clr-text-muted); }
+.sc-link { font-size: .82rem; font-weight: 700; color: var(--clr-accent); text-decoration: none; white-space: nowrap; }
+.sc-link:hover { text-decoration: underline; }
+.income-note { font-size: .78rem; color: var(--clr-text-muted); margin: 0 0 1rem; }
+.income-note a { color: var(--clr-accent); }
 
 .card {
   background: var(--clr-surface);
