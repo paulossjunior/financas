@@ -433,16 +433,16 @@ const svgChart = computed(() => {
               <svg :viewBox="`0 0 ${svgChart.W} ${svgChart.H}`" role="img" aria-label="Receita e despesa por mês">
                 <line v-for="(g, i) in svgChart.grid" :key="'g' + i" class="gl" x1="44" :y1="g.y" x2="664" :y2="g.y" />
                 <text v-for="(g, i) in svgChart.grid" :key="'gt' + i" class="gt" x="38" :y="g.y + 3" text-anchor="end">{{ g.label }}</text>
-                <polyline fill="none" stroke="#0d9488" stroke-width="2.5" stroke-linejoin="round" :points="svgChart.incPts" />
-                <polyline fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linejoin="round" :points="svgChart.expPts" />
-                <circle v-for="(dt, i) in svgChart.incDots" :key="'i' + i" :cx="dt.cx" :cy="dt.cy" r="3.5" fill="#0d9488" />
-                <circle v-for="(dt, i) in svgChart.expDots" :key="'e' + i" :cx="dt.cx" :cy="dt.cy" r="3.5" fill="#3b82f6" />
+                <polyline class="line-inc" fill="none" stroke-width="2.5" stroke-linejoin="round" :points="svgChart.incPts" />
+                <polyline class="line-exp" fill="none" stroke-width="2.5" stroke-linejoin="round" :points="svgChart.expPts" />
+                <circle v-for="(dt, i) in svgChart.incDots" :key="'i' + i" class="dot-inc" :cx="dt.cx" :cy="dt.cy" r="3.5" />
+                <circle v-for="(dt, i) in svgChart.expDots" :key="'e' + i" class="dot-exp" :cx="dt.cx" :cy="dt.cy" r="3.5" />
                 <text v-for="(l, i) in svgChart.labels" :key="'l' + i" class="ml" :x="l.x" y="250" text-anchor="middle">{{ l.t }}</text>
               </svg>
             </div>
             <div class="legend">
-              <span><i class="dot" style="background:#0d9488"></i> Receita</span>
-              <span><i class="dot card"></i> Despesa</span>
+              <span><i class="dot inc"></i> Receita</span>
+              <span><i class="dot exp"></i> Despesa</span>
             </div>
           </div>
 

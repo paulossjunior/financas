@@ -1,14 +1,35 @@
 /* Shared report styles — used by the print/PDF report overlay (month + year).
    Loaded unscoped so it also styles slotted report bodies. */
-.report-doc {
-  --r-blue: var(--accent);
-  --r-amber: var(--amber);
-  --r-violet: #8b5cf6;
-  --r-red: var(--red);
-  --r-violet-soft: rgba(139, 92, 246, .14);
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
+/* Alias the app's real global tokens (--clr-*) onto the teleported overlay so the
+   report inherits the EXACT app palette (the overlay lives outside the scoped .page
+   where the short-namespace vars are defined). */
+.report-overlay {
+  --ink: var(--clr-text-primary);
+  --ink-2: var(--clr-text-secondary);
+  --ink-3: var(--clr-text-muted);
+  --line: var(--clr-stroke);
+  --line-2: var(--clr-stroke-soft);
+  --track: var(--clr-track);
+  --surface: var(--clr-surface);
+  --bg: var(--clr-bg);
+  --accent: var(--clr-accent);
+  --accent-soft: var(--clr-accent-light);
+  --amber: var(--clr-amber);
+  --red: var(--clr-negative);
+  --red-soft: var(--clr-red-soft);
+  /* Series colors — faithful to the Mês composition bar + Ano line chart. */
+  --r-card: var(--clr-accent);   /* cartão = accent (verde), como na tela Mês */
+  --r-amber: var(--clr-amber);   /* fixos */
+  --r-violet: #8b5cf6;           /* avulsos */
+  --r-red: var(--clr-negative);  /* descontos */
+  --r-violet-soft: rgba(139, 92, 246, .16);
+  --r-income: var(--clr-accent); /* linha receita (teal, = gráfico do Ano) */
+  --r-coral: #cf5b34;            /* linha despesa (coral, = gráfico do Ano) */
 }
+@media (prefers-color-scheme: dark) {
+  .report-overlay { --r-coral: #f0a07a; --r-violet-soft: rgba(139, 92, 246, .26); }
+}
+.report-doc { color: var(--ink); font-variant-numeric: tabular-nums; }
 
 .report-doc .sheet { background: var(--surface, #fff); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
 .report-doc .sheet + .sheet { margin-top: 18px; }
@@ -37,13 +58,14 @@
 .report-doc .compbar { display: flex; height: 38px; border-radius: 9px; overflow: hidden; gap: 2px; background: var(--track); }
 .report-doc .seg { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11.5px; font-weight: 700;
   min-width: 3px; white-space: nowrap; overflow: hidden; }
-.report-doc .seg.card { background: var(--r-blue); } .report-doc .seg.fix { background: var(--r-amber); }
+.report-doc .seg.card { background: var(--r-card); } .report-doc .seg.fix { background: var(--r-amber); }
 .report-doc .seg.avul { background: var(--r-violet); } .report-doc .seg.ded { background: var(--r-red); }
 .report-doc .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 11px; font-size: 12.5px; color: var(--ink-2); }
 .report-doc .legend span { display: inline-flex; align-items: center; gap: 7px; }
 .report-doc .dot { width: 10px; height: 10px; border-radius: 3px; }
-.report-doc .dot.card { background: var(--r-blue); } .report-doc .dot.fix { background: var(--r-amber); }
+.report-doc .dot.card { background: var(--r-card); } .report-doc .dot.fix { background: var(--r-amber); }
 .report-doc .dot.avul { background: var(--r-violet); } .report-doc .dot.ded { background: var(--r-red); }
+.report-doc .dot.inc { background: var(--r-income); } .report-doc .dot.exp { background: var(--r-coral); }
 
 .report-doc .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .report-doc .panel { border: 1px solid var(--line); border-radius: 11px; padding: 15px 16px; }
@@ -67,7 +89,7 @@
 .report-doc .rank { display: grid; gap: 8px; }
 .report-doc .rk { display: grid; grid-template-columns: 140px 1fr auto; align-items: center; gap: 10px; font-size: 13px; }
 .report-doc .rk .n { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.report-doc .rk .bar { height: 9px; border-radius: 5px; background: var(--r-blue); min-width: 2px; }
+.report-doc .rk .bar { height: 9px; border-radius: 5px; background: var(--r-card); min-width: 2px; }
 .report-doc .rk b { font-weight: 700; }
 
 .report-doc .tblwrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 11px; }
@@ -83,6 +105,8 @@
 .report-doc .gl { stroke: var(--line); stroke-width: 1; }
 .report-doc .gt { fill: var(--ink-3, var(--ink-2)); font-size: 10px; }
 .report-doc .ml { fill: var(--ink-2); font-size: 10.5px; }
+.report-doc .line-inc { stroke: var(--r-income); } .report-doc .dot-inc { fill: var(--r-income); }
+.report-doc .line-exp { stroke: var(--r-coral); }  .report-doc .dot-exp { fill: var(--r-coral); }
 
 .report-doc .insight { border-left: 3px solid var(--accent); background: var(--accent-soft, rgba(16,185,129,.12)); border-radius: 0 10px 10px 0;
   padding: 13px 16px; font-size: 13.5px; color: var(--ink); }
