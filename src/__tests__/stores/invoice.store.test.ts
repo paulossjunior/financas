@@ -121,6 +121,7 @@ describe("invoice.store", () => {
       installments_future_total: "0",
       subscriptions: [],
       subscriptions_total: "0",
+      forecast_next: [], forecast_committed_total: "0", forecast_last_month: "",
     };
     mockGetDashboard.mockResolvedValue(dash);
 
@@ -151,7 +152,7 @@ describe("invoice.store", () => {
         total_charged: "0", total_reversals: "0", net_total: "0",
         total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
-        subscriptions: [], subscriptions_total: "0",
+        subscriptions: [], subscriptions_total: "0", forecast_next: [], forecast_committed_total: "0", forecast_last_month: "",
         invoice_count: 3, categories: [], top_transactions: [],
         monthly_trend: [
           { month: "2026-03", net_total: "500.00", categories: [] },
@@ -179,7 +180,7 @@ describe("invoice.store", () => {
         total_charged: "0", total_reversals: "0", net_total: "0",
         total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
-        subscriptions: [], subscriptions_total: "0",
+        subscriptions: [], subscriptions_total: "0", forecast_next: [], forecast_committed_total: "0", forecast_last_month: "",
         invoice_count: 1, categories: [], top_transactions: [],
         monthly_trend: [{ month: "2026-05", net_total: "1234.56", categories: [] }],
       } as DashboardData);
@@ -201,7 +202,7 @@ describe("invoice.store", () => {
         total_charged: "0", total_reversals: "0", net_total: "0",
         total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
-        subscriptions: [], subscriptions_total: "0",
+        subscriptions: [], subscriptions_total: "0", forecast_next: [], forecast_committed_total: "0", forecast_last_month: "",
         invoice_count: 2, categories: [], top_transactions: [], monthly_trend: [],
       } as DashboardData);
 
@@ -222,7 +223,7 @@ describe("invoice.store", () => {
         total_charged: "0", total_reversals: "0", net_total: "0",
         total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
-        subscriptions: [], subscriptions_total: "0",
+        subscriptions: [], subscriptions_total: "0", forecast_next: [], forecast_committed_total: "0", forecast_last_month: "",
         invoice_count: 0, categories: [], top_transactions: [], monthly_trend: [],
       } as DashboardData);
 
@@ -246,7 +247,7 @@ describe("invoice.store", () => {
         total_charged: "0", total_reversals: "0", net_total: "0",
         total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
-        subscriptions: [], subscriptions_total: "0",
+        subscriptions: [], subscriptions_total: "0", forecast_next: [], forecast_committed_total: "0", forecast_last_month: "",
         invoice_count: 1, categories: [], top_transactions: [], monthly_trend: [],
       } as DashboardData);
 
@@ -267,7 +268,7 @@ describe("invoice.store", () => {
         total_charged: "0", total_reversals: "0", net_total: "0",
         total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
-        subscriptions: [], subscriptions_total: "0",
+        subscriptions: [], subscriptions_total: "0", forecast_next: [], forecast_committed_total: "0", forecast_last_month: "",
         invoice_count: 1, categories: [], top_transactions: [], monthly_trend: [],
       } as DashboardData);
 
@@ -296,7 +297,7 @@ describe("invoice.store", () => {
         total_charged: "0", total_reversals: "0", net_total: "0",
         total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
-        subscriptions: [], subscriptions_total: "0",
+        subscriptions: [], subscriptions_total: "0", forecast_next: [], forecast_committed_total: "0", forecast_last_month: "",
         invoice_count: 0, categories: [], top_transactions: [], monthly_trend: [],
       } as DashboardData);
       mockRemove.mockResolvedValue(undefined);
@@ -320,7 +321,7 @@ describe("invoice.store", () => {
         total_charged: "0", total_reversals: "0", net_total: "0",
         total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
-        subscriptions: [], subscriptions_total: "0",
+        subscriptions: [], subscriptions_total: "0", forecast_next: [], forecast_committed_total: "0", forecast_last_month: "",
         invoice_count: 1, categories: [], top_transactions: [], monthly_trend: [],
       } as DashboardData);
       mockRemove.mockResolvedValue(undefined);

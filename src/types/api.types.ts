@@ -73,6 +73,18 @@ export interface MonthlySnapshot {
   categories: CategorySnapshot[];
 }
 
+export interface ForecastItem {
+  description: string;
+  parcela: string; // "3/5"
+  amount: string;
+}
+
+export interface ForecastPoint {
+  month: string; // "YYYY-MM"
+  amount: string;
+  items: ForecastItem[];
+}
+
 export interface YearMonthPoint {
   month: string;
   income: string;
@@ -107,6 +119,8 @@ export interface YearSummary {
   fixed_month: string;
   card_ceiling: string;
   card_ceiling_salary: string;
+  /** Future card payments committed by installments (continuous series). */
+  card_forecast: ForecastPoint[];
 }
 
 export interface PayslipItem {
@@ -168,6 +182,12 @@ export interface DashboardData {
   installments_future_total: string;
   subscriptions: SubscriptionSummary[];
   subscriptions_total: string;
+  /** Card forecast: next months committed by installments (from all invoices). */
+  forecast_next: ForecastPoint[];
+  /** Total still to be paid across all future parcelas. */
+  forecast_committed_total: string;
+  /** Month the installment commitment ends ("YYYY-MM"), or "" when none. */
+  forecast_last_month: string;
 }
 
 export interface InstallmentSummary {
