@@ -13,7 +13,8 @@ use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent
 const data = ref<YearSummary | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const selectedYear = ref<number | null>(null); // null = todos os anos
+const yearFrom = ref<number | null>(null); // null = sem limite inferior
+const yearTo = ref<number | null>(null);   // null = sem limite superior
 const years = ref<number[]>([]);
 const rangeFrom = ref<string | null>(null); // YYYY-MM
 const rangeTo = ref<string | null>(null);
@@ -30,10 +31,10 @@ async function load(): Promise<void> {
   loading.value = true;
   error.value = null;
   try {
-    data.value = await getYearSummary(selectedYear.value ?? undefined);
+    data.value = await getYearSummary(yearFrom.value ?? undefined, yearTo.value ?? undefined);
     // Keep the year list stable (backend returns all years regardless of filter).
     if (data.value.available_years.length) years.value = data.value.available_years;
-    rangeFrom.value = null; // reset interval on (re)load
+    rangeFrom.value = null; // reset month interval on (re)load
     rangeTo.value = null;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
@@ -177,13 +178,18 @@ const chartOption = computed(() => {
           · {{ data.tx_count }} lançamentos no cartão
         </p>
       </div>
-      <label class="yearfilter" v-if="years.length">
+      <div class="yearfilter" v-if="years.length">
         <span>Ano</span>
-        <select v-model="selectedYear" @change="onYearChange">
-          <option :value="null">Todos</option>
+        <select v-model="yearFrom" @change="onYearChange" aria-label="Ano inicial">
+          <option :value="null">início</option>
           <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
         </select>
-      </label>
+        <span class="dash">—</span>
+        <select v-model="yearTo" @change="onYearChange" aria-label="Ano final">
+          <option :value="null">fim</option>
+          <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
+        </select>
+      </div>
     </header>
 
     <div v-if="loading" class="state">Carregando…</div>
@@ -340,6 +346,7 @@ const chartOption = computed(() => {
 .page { padding: 1.75rem 2rem 4rem; max-width: 1320px; margin: 0 auto; color: var(--clr-text-primary); font-variant-numeric: tabular-nums; }
 .top { margin-bottom: 1.25rem; display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 .yearfilter { display: flex; align-items: center; gap: .5rem; font-size: 12px; font-weight: 600; color: var(--clr-text-secondary); }
+.yearfilter .dash { color: var(--clr-text-muted); }
 .yearfilter select {
   font-family: inherit; font-size: 13px; font-weight: 600; padding: 6px 10px;
   border: 1px solid var(--clr-stroke); border-radius: var(--radius-md);

@@ -32,13 +32,14 @@ pub async fn get_dashboard_cmd(
 
 #[tauri::command]
 pub async fn get_year_summary_cmd(
-    year: Option<i32>,
+    year_from: Option<i32>,
+    year_to: Option<i32>,
     store: State<'_, SharedStore>,
     config: State<'_, Mutex<AppConfig>>,
 ) -> Result<YearSummary, String> {
     let manual = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
     let invoices = store.lock().map_err(|e| e.to_string())?.list_owned();
-    Ok(compute_year_summary(&invoices, &manual, year))
+    Ok(compute_year_summary(&invoices, &manual, year_from, year_to))
 }
 
 #[tauri::command]

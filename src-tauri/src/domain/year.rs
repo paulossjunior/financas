@@ -60,7 +60,8 @@ pub struct YearSummary {
 pub fn compute_year_summary(
     invoices: &[Invoice],
     manual: &[ManualEntry],
-    year: Option<i32>,
+    year_from: Option<i32>,
+    year_to: Option<i32>,
 ) -> YearSummary {
     // Every calendar year in the data — computed BEFORE filtering so the dropdown is stable.
     let mut years: BTreeSet<i32> = BTreeSet::new();
@@ -76,9 +77,13 @@ pub fn compute_year_summary(
     }
     let available_years: Vec<i32> = years.into_iter().rev().collect();
 
-    let in_year = |ym: &str| match year {
-        Some(y) => year_of(ym) == Some(y),
-        None => true,
+    // Keep months whose year is within [year_from, year_to] (either bound optional).
+    let in_year = |ym: &str| {
+        let y = match year_of(ym) {
+            Some(v) => v,
+            None => return false,
+        };
+        year_from.map_or(true, |f| y >= f) && year_to.map_or(true, |t| y <= t)
     };
 
     // Card grouped by transaction-date month, net of reversals (filtered to `year`).
@@ -254,7 +259,7 @@ mod tests {
     fn groups_card_by_transaction_date() {
         // Two charges in different months, even from one invoice.
         let inv = invoice_with(&[("2026-05-10", dec!(100)), ("2026-06-02", dec!(200))]);
-        let y = compute_year_summary(&[inv], &[], None);
+        let y = compute_year_summary(&[inv], &[], None, None);
         assert_eq!(y.months.len(), 2);
         assert_eq!(y.months[0].month, "2026-05");
         assert_eq!(y.months[0].card, "100");
@@ -269,7 +274,7 @@ mod tests {
             entry(EntryKind::Expense, dec!(2950), "Moradia & Serviços", "2026-06", true),
             entry(EntryKind::Income, dec!(8000), "Salário", "2026-06", true),
         ];
-        let y = compute_year_summary(&[inv], &manual, None);
+        let y = compute_year_summary(&[inv], &manual, None, None);
         // 2 scope months → recurring counts twice.
         assert_eq!(y.fixed_total, "5900"); // 2950 * 2
         assert_eq!(y.income_total, "16000"); // 8000 * 2
@@ -297,7 +302,7 @@ mod tests {
             bolsa,
             entry(EntryKind::Expense, dec!(10590), "Fixos", "2026-06", true),
         ];
-        let y = compute_year_summary(&[inv], &manual, None);
+        let y = compute_year_summary(&[inv], &manual, None, None);
         assert_eq!(y.salary_month, "15500"); // all recurring income
         assert_eq!(y.salary_only, "11000"); // only salary-flagged income
         assert_eq!(y.card_ceiling, "4910"); // 15500 − 10590
@@ -312,7 +317,7 @@ mod tests {
             entry(EntryKind::Income, dec!(5000), "Bônus", "2026-06", false),  // one-off, ignored
             entry(EntryKind::Expense, dec!(4000), "Aluguel", "2026-06", true), // fixed > salary
         ];
-        let y = compute_year_summary(&[inv], &manual, None);
+        let y = compute_year_summary(&[inv], &manual, None, None);
         assert_eq!(y.salary_month, "3000"); // one-off bônus excluded
         assert_eq!(y.fixed_month, "4000");
         assert_eq!(y.card_ceiling, "0"); // floored at 0 (fixed exceed salary)
@@ -322,7 +327,7 @@ mod tests {
     fn income_appears_per_month_not_as_category() {
         let inv = invoice_with(&[("2026-06-10", dec!(500))]);
         let manual = vec![entry(EntryKind::Income, dec!(9000), "Salário", "2026-06", true)];
-        let y = compute_year_summary(&[inv], &manual, None);
+        let y = compute_year_summary(&[inv], &manual, None, None);
         assert_eq!(y.months[0].income, "9000");
         assert!(y.categories.iter().all(|c| c.name != "Salário"));
     }
@@ -330,18 +335,18 @@ mod tests {
     #[test]
     fn no_income_gives_zero_savings_rate() {
         let inv = invoice_with(&[("2026-06-10", dec!(500))]);
-        let y = compute_year_summary(&[inv], &[], None);
+        let y = compute_year_summary(&[inv], &[], None, None);
         assert_eq!(y.savings_rate, 0.0);
     }
 
     #[test]
     fn year_filter_restricts_to_that_year_and_lists_all_years() {
         let inv = invoice_with(&[("2025-12-10", dec!(200)), ("2026-03-10", dec!(500))]);
-        let all = compute_year_summary(&[inv.clone()], &[], None);
+        let all = compute_year_summary(&[inv.clone()], &[], None, None);
         assert_eq!(all.available_years, vec![2026, 2025]); // desc, unaffected by filter
         assert_eq!(all.months.len(), 2);
 
-        let only26 = compute_year_summary(&[inv], &[], Some(2026));
+        let only26 = compute_year_summary(&[inv], &[], Some(2026), Some(2026));
         assert_eq!(only26.months.len(), 1);
         assert_eq!(only26.months[0].month, "2026-03");
         assert_eq!(only26.card_total, "500");
