@@ -6,6 +6,8 @@ Aplicativo desktop de finanças pessoais — importa faturas do cartão **BTG** 
 
 > Tauri v2 (Rust) + Vue 3 + SQLite. macOS e Windows.
 
+🌐 **Site**: https://paulossjunior.github.io/financas/ · 📖 **Manual de uso**: [docs/MANUAL.md](docs/MANUAL.md) ([online](https://paulossjunior.github.io/financas/manual.html))
+
 ---
 
 ## O que faz
