@@ -7,6 +7,7 @@ use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 
 use super::category::{aggregate_by_category, Category};
+use super::dashboard::CategorySnapshot;
 use super::invoice::Invoice;
 use super::manual_entry::{EntryKind, ManualEntry};
 use super::payslip::Payslip;
@@ -23,6 +24,7 @@ pub struct YearMonthPoint {
     pub payroll: String,  // payroll deductions (folha)
     pub expense: String,  // card + fixed + variable + payroll
     pub balance: String,  // income − expense
+    pub categories: Vec<CategorySnapshot>, // expense per category this month (desc by value)
 }
 
 /// Whole-period ("year") view: everything the annual dashboard needs in one shot.
@@ -178,6 +180,18 @@ pub fn compute_year_summary(
         }
     }
 
+    // Per-month expense breakdown by category (card + manual expenses + payroll), net of reversals.
+    let mut cat_by_month: BTreeMap<String, BTreeMap<String, Decimal>> = BTreeMap::new();
+    for t in card_txs.iter().chain(manual_expense_txs.iter()) {
+        let m = t.date.format("%Y-%m").to_string();
+        let signed = if t.is_reversal { -t.amount } else { t.amount };
+        *cat_by_month
+            .entry(m)
+            .or_default()
+            .entry(t.category.clone())
+            .or_insert(dec!(0)) += signed;
+    }
+
     // Per-month points, chronological (BTreeSet iterates sorted).
     let mut months: Vec<YearMonthPoint> = Vec::new();
     let mut card_total = dec!(0);
@@ -201,6 +215,17 @@ pub fn compute_year_summary(
         if expense > biggest.1 {
             biggest = (m.clone(), expense);
         }
+        let categories: Vec<CategorySnapshot> = {
+            let mut pairs: Vec<(String, Decimal)> = cat_by_month
+                .get(m)
+                .map(|cm| cm.iter().map(|(k, v)| (k.clone(), *v)).collect())
+                .unwrap_or_default();
+            pairs.sort_by(|a, b| b.1.cmp(&a.1));
+            pairs
+                .into_iter()
+                .map(|(name, val)| CategorySnapshot { name, net_total: val.to_string() })
+                .collect()
+        };
         months.push(YearMonthPoint {
             month: m.clone(),
             income: income.to_string(),
@@ -210,6 +235,7 @@ pub fn compute_year_summary(
             payroll: payroll.to_string(),
             expense: expense.to_string(),
             balance: (income - expense).to_string(),
+            categories,
         });
     }
 

@@ -82,6 +82,7 @@ export interface YearMonthPoint {
   payroll: string;
   expense: string;
   balance: string;
+  categories: CategorySnapshot[];
 }
 
 export interface YearSummary {
