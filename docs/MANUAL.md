@@ -16,10 +16,13 @@ Um guia rápido pra tirar o máximo do app. Tudo acontece no seu computador; nad
 6. [Lançamentos avulsos](#6-lançamentos-avulsos)
 7. [Categorias e mapeamento](#7-categorias-e-mapeamento)
 8. [Ver o ano inteiro](#8-ver-o-ano-inteiro)
-9. [Teto do cartão](#9-teto-do-cartão)
-10. [Gerar um relatório em PDF](#10-gerar-um-relatório-em-pdf)
-11. [Seus dados e backup](#11-seus-dados-e-backup)
-12. [Dúvidas comuns](#12-dúvidas-comuns)
+9. [Importações & Extrato bancário](#9-importações--extrato-bancário)
+10. [Previsão do cartão](#10-previsão-do-cartão)
+11. [Extratos & Faturas](#11-extratos--faturas)
+12. [Teto do cartão](#12-teto-do-cartão)
+13. [Gerar um relatório em PDF](#13-gerar-um-relatório-em-pdf)
+14. [Seus dados e backup](#14-seus-dados-e-backup)
+15. [Dúvidas comuns](#15-dúvidas-comuns)
 
 ---
 
@@ -124,7 +127,54 @@ Assim você enxerga hábitos: aquele gasto pequeno e repetido que soma muito no 
 
 ---
 
-## 9. Teto do cartão
+## 9. Importações & Extrato bancário
+
+A aba **📥 Importações** reúne, em um só lugar, tudo o que entra no app: **Faturas** (cartão), **Extrato** (banco) e **Contracheque**.
+
+O **Extrato** lê o extrato do seu banco em `.xls` e traz os lançamentos de **entrada e saída** da conta.
+
+1. Abra **📥 Importações** e vá em **Extrato**.
+2. Escolha o arquivo `.xls` do extrato.
+3. Confira a prévia e confirme.
+
+O que ele faz sozinho:
+- **Categoriza cada lançamento** pelas suas regras de palavra-chave; quando não encontra uma regra, usa a categoria que o próprio banco informou.
+- **Deixa de fora o que contaria em dobro**: o pagamento da fatura do cartão, o salário (quando você já importou o contracheque) e as transferências entre as suas próprias contas.
+
+Antes de salvar, a prévia mostra duas listas: **incluídos** e **excluídos** (com o motivo de cada exclusão). Nela você pode:
+- **Trocar a categoria** de qualquer lançamento, escolhendo entre as suas categorias cadastradas.
+- **Remover** os lançamentos que não quer importar.
+
+As datas aparecem **com o ano**. Os lançamentos incluídos entram no painel como **avulso** (quando é gasto) ou **renda** (quando é entrada).
+
+> Pode importar sem medo de repetir: o app reconhece o que já entrou e **não duplica** o mesmo lançamento.
+
+---
+
+## 10. Previsão do cartão
+
+Um gráfico que **projeta quanto você ainda vai pagar no cartão** nos próximos meses, com base nas **compras parceladas** que você já fez.
+
+- Mostra, **mês a mês**, o valor das parcelas que ainda vão cair.
+- Vem acompanhado de uma **tabela** com os valores a pagar em cada mês.
+- Aparece **completo na tela Ano** (a projeção inteira) e em um **resumo compacto na tela Mês**.
+
+Assim você já sabe o peso das parcelas que assumiu — sem sustos na próxima fatura.
+
+---
+
+## 11. Extratos & Faturas
+
+A aba **🔁 Extratos & Faturas** dá uma visão geral da **movimentação do seu dinheiro**.
+
+- **Entradas e saídas** do extrato bancário somadas ao **gasto do cartão**, mês a mês, em **barras agrupadas**.
+- Um **ranking de categorias** que junta o que veio do banco e o que veio do cartão.
+
+Serve para enxergar o **fluxo de caixa** por inteiro: quanto entrou, quanto saiu e para onde foi — tudo no mesmo lugar.
+
+---
+
+## 12. Teto do cartão
 
 O **teto** responde: *quanto o cartão pode gastar sem furar o orçamento?* É a sua renda menos as contas fixas.
 
@@ -136,7 +186,7 @@ Se o gasto do cartão passar do teto, o app sinaliza. Bom para decidir antes da 
 
 ---
 
-## 10. Gerar um relatório em PDF
+## 13. Gerar um relatório em PDF
 
 Um resumo pronto pra arquivar ou compartilhar.
 
@@ -146,7 +196,7 @@ Um resumo pronto pra arquivar ou compartilhar.
 
 ---
 
-## 11. Seus dados e backup
+## 14. Seus dados e backup
 
 - Tudo fica num arquivo local no seu computador. **Nada é enviado pra internet.**
 - **Backup**: para levar seus dados para outra máquina ou guardar, copie a pasta de dados do app:
@@ -156,7 +206,7 @@ Um resumo pronto pra arquivar ou compartilhar.
 
 ---
 
-## 12. Dúvidas comuns
+## 15. Dúvidas comuns
 
 **Preciso de internet?** Não. O app funciona 100% offline.
 

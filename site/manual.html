@@ -130,8 +130,11 @@
       <li><a href="#p9">Teto do cartão</a></li>
       <li><a href="#p10">Relatório em PDF</a></li>
       <li><a href="#p11">Dados e backup</a></li>
-      <li><a href="#p12">Inflação (IPCA + pessoal)</a></li>
-      <li><a href="#p13">Dúvidas comuns</a></li>
+      <li><a href="#p12">Importações &amp; Extrato</a></li>
+      <li><a href="#p13">Previsão do cartão</a></li>
+      <li><a href="#p14">Extratos &amp; Faturas</a></li>
+      <li><a href="#p15">Inflação (IPCA + pessoal)</a></li>
+      <li><a href="#p16">Dúvidas comuns</a></li>
     </ol>
   </nav>
 
@@ -364,7 +367,80 @@
     </section>
 
     <section id="p12">
-      <h2><span class="num">12</span> Inflação (IPCA + pessoal)</h2>
+      <h2><span class="num">12</span> Importações &amp; Extrato bancário</h2>
+      <div class="fig"><svg viewBox="0 0 320 100" role="img" aria-label="Extrato do banco com lançamentos incluídos e excluídos">
+        <rect x="46" y="22" width="60" height="56" rx="6" class="s-sf k-ln" stroke-width="1.5"/>
+        <rect x="46" y="22" width="60" height="11" class="s-ac"/>
+        <rect x="54" y="41" width="44" height="4" rx="2" class="s-ln"/>
+        <rect x="54" y="51" width="44" height="4" rx="2" class="s-ln"/>
+        <rect x="54" y="61" width="28" height="4" rx="2" class="s-ln"/>
+        <text x="54" y="76" class="lbl">.xls</text>
+        <path d="M114 50 h24 M130 43 l8 7 -8 7" class="k-ac" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="152" y="24" width="124" height="15" rx="5" class="s-sf k-ln" stroke-width="1.2"/><circle cx="161" cy="31" r="4" class="s-ac"/><rect x="172" y="29" width="76" height="4" rx="2" class="s-ln"/>
+        <rect x="152" y="43" width="124" height="15" rx="5" class="s-sf k-ln" stroke-width="1.2"/><circle cx="161" cy="50" r="4" class="s-ac"/><rect x="172" y="48" width="58" height="4" rx="2" class="s-ln"/>
+        <rect x="152" y="62" width="124" height="15" rx="5" class="s-sf k-ln" stroke-width="1.2"/><circle cx="161" cy="69" r="4" class="s-mut"/><rect x="172" y="67" width="70" height="4" rx="2" class="s-mut"/>
+      </svg></div>
+      <p>A aba <b>📥 Importações</b> reúne, em um só lugar, tudo o que entra no app: <b>Faturas</b> (cartão), <b>Extrato</b> (banco) e <b>Contracheque</b>.</p>
+      <p>O <b>Extrato</b> lê o extrato do seu banco em <code>.xls</code> e traz os lançamentos de <b>entrada e saída</b> da conta.</p>
+      <ol class="steps">
+        <li>Abra <b>📥 Importações</b> e vá em <b>Extrato</b>.</li>
+        <li>Escolha o arquivo <code>.xls</code> do extrato.</li>
+        <li>Confira a prévia e confirme.</li>
+      </ol>
+      <ul class="plain">
+        <li><b>Categoriza sozinho</b> cada lançamento pelas suas regras de palavra-chave; sem regra, usa a categoria que o próprio banco informou.</li>
+        <li><b>Deixa de fora o que contaria em dobro</b>: o pagamento da fatura do cartão, o salário (quando já há contracheque importado) e as transferências entre as suas próprias contas.</li>
+        <li>Na prévia você vê <b>incluídos</b> e <b>excluídos</b> (com o motivo). Dá para <b>trocar a categoria</b> de qualquer lançamento e <b>remover</b> o que não quer.</li>
+      </ul>
+      <p>As datas aparecem <b>com o ano</b>. Os incluídos entram no painel como <b>avulso</b> (gasto) ou <b>renda</b> (entrada).</p>
+      <div class="callout"><span class="i">↺</span><div>Pode importar sem medo de repetir: o app reconhece o que já entrou e <b>não duplica</b> o mesmo lançamento.</div></div>
+    </section>
+
+    <section id="p13">
+      <h2><span class="num">13</span> Previsão do cartão</h2>
+      <div class="fig"><svg viewBox="0 0 320 100" role="img" aria-label="Projeção das parcelas do cartão nos próximos meses">
+        <line x1="40" y1="82" x2="288" y2="82" class="k-ln" stroke-width="1"/>
+        <rect x="54" y="34" width="24" height="48" rx="3" class="s-am"/>
+        <rect x="96" y="44" width="24" height="38" rx="3" class="s-am"/>
+        <rect x="138" y="54" width="24" height="28" rx="3" class="s-am"/>
+        <rect x="180" y="62" width="24" height="20" rx="3" class="s-am"/>
+        <rect x="222" y="70" width="24" height="12" rx="3" class="s-am"/>
+        <rect x="264" y="76" width="24" height="6" rx="3" class="s-am"/>
+        <text x="60" y="96" class="lbl">jul</text><text x="102" y="96" class="lbl">ago</text><text x="144" y="96" class="lbl">set</text>
+        <text x="186" y="96" class="lbl">out</text><text x="228" y="96" class="lbl">nov</text><text x="270" y="96" class="lbl">dez</text>
+      </svg></div>
+      <p>Um gráfico que <b>projeta quanto você ainda vai pagar no cartão</b> nos próximos meses, com base nas <b>compras parceladas</b> que você já fez.</p>
+      <ul class="plain">
+        <li>Mostra, <b>mês a mês</b>, o valor das parcelas que ainda vão cair.</li>
+        <li>Vem acompanhado de uma <b>tabela</b> com os valores a pagar em cada mês.</li>
+        <li>Aparece <b>completo na tela Ano</b> (a projeção inteira) e em um <b>resumo compacto na tela Mês</b>.</li>
+      </ul>
+      <p class="muted">Assim você já sabe o peso das parcelas que assumiu — sem sustos na próxima fatura.</p>
+    </section>
+
+    <section id="p14">
+      <h2><span class="num">14</span> Extratos &amp; Faturas</h2>
+      <div class="fig"><svg viewBox="0 0 320 100" role="img" aria-label="Movimentações: entradas, saídas e cartão por mês, com ranking de categorias">
+        <line x1="40" y1="82" x2="192" y2="82" class="k-ln" stroke-width="1"/>
+        <rect x="50" y="44" width="10" height="38" rx="2" class="s-ac"/><rect x="62" y="52" width="10" height="30" rx="2" class="s-am"/><rect x="74" y="60" width="10" height="22" rx="2" class="s-ink"/>
+        <rect x="100" y="36" width="10" height="46" rx="2" class="s-ac"/><rect x="112" y="48" width="10" height="34" rx="2" class="s-am"/><rect x="124" y="56" width="10" height="26" rx="2" class="s-ink"/>
+        <rect x="150" y="48" width="10" height="34" rx="2" class="s-ac"/><rect x="162" y="40" width="10" height="42" rx="2" class="s-am"/><rect x="174" y="62" width="10" height="20" rx="2" class="s-ink"/>
+        <text x="58" y="96" class="lbl">mai</text><text x="108" y="96" class="lbl">jun</text><text x="158" y="96" class="lbl">jul</text>
+        <rect x="214" y="30" width="74" height="10" rx="3" class="s-ac"/>
+        <rect x="214" y="46" width="58" height="10" rx="3" class="s-am"/>
+        <rect x="214" y="62" width="42" height="10" rx="3" class="s-ink"/>
+        <text x="214" y="90" class="lbl">ranking</text>
+      </svg></div>
+      <p>A aba <b>🔁 Extratos &amp; Faturas</b> dá uma visão geral da <b>movimentação do seu dinheiro</b>.</p>
+      <ul class="plain">
+        <li><b>Entradas e saídas</b> do extrato bancário somadas ao <b>gasto do cartão</b>, mês a mês, em <b>barras agrupadas</b>.</li>
+        <li>Um <b>ranking de categorias</b> que junta o que veio do banco e o que veio do cartão.</li>
+      </ul>
+      <p class="muted">Serve para enxergar o <b>fluxo de caixa</b> por inteiro: quanto entrou, quanto saiu e para onde foi — tudo no mesmo lugar.</p>
+    </section>
+
+    <section id="p15">
+      <h2><span class="num">15</span> Inflação (IPCA + pessoal)</h2>
       <div class="fig"><svg viewBox="0 0 320 100" role="img" aria-label="IPCA oficial e inflação pessoal">
         <line class="gl" x1="40" y1="84" x2="300" y2="84"></line>
         <polyline class="k-am" stroke-width="2.5" fill="none" points="44,66 96,60 148,64 200,50 252,58 292,40"></polyline>
@@ -388,8 +464,8 @@
       <p class="muted">Base científica: a inflação é heterogênea entre famílias e o principal fator é a cesta de consumo — <a href="https://www.sciencedirect.com/science/article/pii/S0304393225000716" target="_blank" rel="noopener">"Beyond the headline: How personal exposure to inflation shapes the financial choices of households"</a> (ScienceDirect, 2025), além de working papers do BCE, BIS e BBVA. Índices: IBGE (agregados 1737 e 7060).</p>
     </section>
 
-    <section id="p13">
-      <h2><span class="num">13</span> Dúvidas comuns</h2>
+    <section id="p16">
+      <h2><span class="num">16</span> Dúvidas comuns</h2>
       <div class="fig"><svg viewBox="0 0 320 100" role="img" aria-label="Perguntas frequentes, funciona offline">
         <path d="M104 24 h72 a10 10 0 0 1 10 10 v24 a10 10 0 0 1 -10 10 h-40 l-14 12 v-12 h-18 a10 10 0 0 1 -10 -10 v-24 a10 10 0 0 1 10 -10 z" class="s-ac"/>
         <text x="140" y="56" text-anchor="middle" class="w" style="font-family:var(--sans);font-size:24px;font-weight:800">?</text>

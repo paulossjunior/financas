@@ -57,3 +57,13 @@ Plugins: `fs`, `dialog`, `store`, `opener`. Permissões em `src-tauri/capabiliti
 
 - Rust: unitários por módulo em `domain/`/`application/` + integração em `src-tauri/tests/` (usa `tests/fixtures/sample_fatura.xlsx`, sintético, commitado).
 - Frontend: Vitest (stores/componentes) + Playwright (E2E).
+
+## Módulos por feature (specs 004–008)
+
+- **004 Contracheque + Ano + Relatórios**: `domain/payslip.rs`, `domain/year.rs`, `components/report/ReportOverlay.vue`.
+- **005 Previsão do cartão**: `domain/forecast.rs` (`compute_card_forecast`, dedup por compra, âncora determinística) → `YearSummary.card_forecast` + resumo no `DashboardData`; `components/dashboard/CardForecastChart.vue`.
+- **006 Inflação (IPCA + pessoal)**: `domain/inflation.rs` (puro), `infrastructure/ibge.rs` (fetch opt-in via reqwest/rustls, agregados 1737+7060), cache `inflation_cache` no SQLite, `commands/inflation.rs`; `components/dashboard/InflationCard.vue`.
+- **007 Explicador da inflação**: `src/utils/inflation-explainer.ts` (puro, testado) + `components/dashboard/InflationExplainer.vue`.
+- **008 Extrato bancário**: `infrastructure/btg_statement.rs` (calamine .xls → linhas), `domain/bank_statement.rs` (parse + classificação: exclui fatura/salário-com-contracheque/transferências internas; categoriza app+fallback banco; dedup por UUIDv5), tabela `bank_entries`, `commands/bank.rs`; incluídos entram no pipeline como `ManualEntry` (avulso/renda). UI: `ExtratoPage` dentro de `ImportsPage` (📥 Importações) + dashboard `MovimentacoesPage` (Extratos & Faturas).
+
+Rede: única chamada externa é o fetch do IBGE (opt-in). Tudo mais é local.

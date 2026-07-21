@@ -2,7 +2,6 @@
 import { onMounted, ref, computed } from "vue";
 import { useInvoiceStore } from "@/stores/invoice.store";
 import { useSettingsStore } from "@/stores/settings.store";
-import ImportButton from "@/components/import/ImportButton.vue";
 import ImportWarnings from "@/components/import/ImportWarnings.vue";
 import ReportOverlay from "@/components/report/ReportOverlay.vue";
 import CategoryTreemap from "@/components/dashboard/CategoryTreemap.vue";
@@ -425,26 +424,6 @@ const pwValue = ref("");
 const pwError = ref<string | null>(null);
 const pwRemember = ref(true);
 
-async function handleImport(paths: string[]): Promise<void> {
-  try {
-    // No password here: the backend silently reuses a saved keychain password if present.
-    const results = await store.importInvoices(paths);
-    lastWarnings.value = results.flatMap((r) => r.warnings);
-    await store.loadDashboard();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    // ENCRYPTED_FILE: nothing saved yet. WRONG_PASSWORD: saved one is stale — re-prompt either way.
-    if (msg === "ENCRYPTED_FILE" || msg === "WRONG_PASSWORD") {
-      pwPaths.value = paths;
-      pwValue.value = "";
-      pwError.value = msg === "WRONG_PASSWORD" ? "Senha salva inválida. Informe a senha novamente." : null;
-      pwRemember.value = true;
-      pwPrompt.value = true;
-    }
-    // other errors already surfaced by the store
-  }
-}
-
 async function submitPassword(): Promise<void> {
   pwError.value = null;
   try {
@@ -545,10 +524,11 @@ function refLabel(): string {
             <button type="button" :class="{ active: avgMode }" @click="avgMode = true">Média/mês</button>
           </div>
           <span v-else-if="d" class="period">{{ periodLabel() }}</span>
-          <button class="qa-btn" @click="toggleQuick">+ Lançamento avulso</button>
-          <button v-if="d" class="qa-btn" @click="reportOpen = true">📄 Relatório</button>
-          <button class="qa-btn" :disabled="inflLoading" @click="refreshInflation">↻ {{ inflLoading ? "Atualizando…" : "Atualizar índices" }}</button>
-          <ImportButton @import-requested="handleImport" />
+          <div class="qa-group">
+            <button class="qa-btn primary" @click="toggleQuick">+ Lançamento avulso</button>
+            <button v-if="d" class="qa-btn" @click="reportOpen = true">📄 Relatório</button>
+            <button class="qa-btn" :disabled="inflLoading" @click="refreshInflation">↻ {{ inflLoading ? "Atualizando…" : "Atualizar índices" }}</button>
+          </div>
         </div>
       </div>
       <p v-if="d" class="sub">
@@ -1095,7 +1075,8 @@ function refLabel(): string {
 /* Header */
 .top { margin-bottom: 1.25rem; }
 .top-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-.top-actions { display: flex; align-items: center; gap: 0.75rem; }
+.top-actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.qa-group { display: inline-flex; align-items: center; gap: 0.5rem; margin-left: auto; flex-wrap: wrap; }
 .eyebrow { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 6px; }
 h1 { font-size: clamp(22px, 3vw, 32px); line-height: 1.1; letter-spacing: -.02em; font-weight: 800; color: var(--ink); }
 .period { font-size: 12px; font-weight: 600; color: var(--ink-2); background: var(--surface-2); padding: 3px 10px; border-radius: 100px; }
@@ -1107,6 +1088,9 @@ h1 { font-size: clamp(22px, 3vw, 32px); line-height: 1.1; letter-spacing: -.02em
 .avg-toggle button.active { background: var(--accent); color: #fff; }
 .qa-btn { font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--accent); background: var(--surface); border: 1px solid var(--accent); border-radius: 8px; padding: 6px 11px; cursor: pointer; white-space: nowrap; }
 .qa-btn:hover { background: var(--accent-soft); }
+.qa-btn:disabled { opacity: 0.55; cursor: default; }
+.qa-btn.primary { color: #fff; background: var(--accent); border-color: var(--accent); }
+.qa-btn.primary:hover { background: var(--accent-hover); }
 .qa-card { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; box-shadow: var(--shadow-sm); }
 .qa-kind { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .qa-kind button { font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); background: var(--surface); border: none; padding: 6px 10px; cursor: pointer; }
