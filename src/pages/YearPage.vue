@@ -209,6 +209,116 @@ const svgChart = computed(() => {
   const labels = ms.map((m, i) => ({ x: +xAt(i).toFixed(1), t: MONTHS[parseInt(m.month.split("-")[1], 10) - 1] }));
   return { W, H, incPts: pts(inc), expPts: pts(exp), incDots: dots(inc), expDots: dots(exp), grid, labels };
 });
+
+// ── Matriz-seletor: categoria × ano (o próprio seletor) ──
+const CAT_PALETTE = ["#0e7c66", "#0ea5a0", "#6d4aff", "#b45309", "#d4a72c", "#2b7a78", "#c026a6", "#b91c1c"];
+const selectedCats = ref<Set<string>>(new Set());
+const isSel = (name: string) => selectedCats.value.has(name);
+function toggleCat(name: string): void {
+  const s = new Set(selectedCats.value);
+  s.has(name) ? s.delete(name) : s.add(name);
+  selectedCats.value = s;
+}
+function selectAllCats(): void { selectedCats.value = new Set(matrixRows.value.map((r) => r.name)); }
+function clearCats(): void { selectedCats.value = new Set(); }
+
+const yearsInRange = computed(() => {
+  const s = new Set<number>();
+  for (const m of viewMonths.value) s.add(parseInt(m.month.split("-")[0], 10));
+  return [...s].sort((a, b) => a - b);
+});
+// Aggregate expense per category: period total + per-year, over the filtered months.
+const catAgg = computed(() => {
+  const total = new Map<string, number>();
+  const byYear = new Map<string, Map<number, number>>();
+  for (const m of viewMonths.value) {
+    const y = parseInt(m.month.split("-")[0], 10);
+    for (const c of m.categories) {
+      const v = n(c.net_total);
+      total.set(c.name, (total.get(c.name) ?? 0) + v);
+      let ym = byYear.get(c.name);
+      if (!ym) { ym = new Map(); byYear.set(c.name, ym); }
+      ym.set(y, (ym.get(y) ?? 0) + v);
+    }
+  }
+  return { total, byYear };
+});
+const matrixRows = computed(() =>
+  [...catAgg.value.total.entries()]
+    .map(([name, tot]) => ({ name, total: tot, byYear: catAgg.value.byYear.get(name) ?? new Map<number, number>() }))
+    .sort((a, b) => b.total - a.total)
+);
+const maxCell = computed(() => {
+  let mx = 1;
+  for (const r of matrixRows.value) for (const y of yearsInRange.value) mx = Math.max(mx, r.byYear.get(y) ?? 0);
+  return mx;
+});
+const cellPct = (v: number) => Math.round((v / maxCell.value) * 100);
+// Footer totals: selected categories (or all, when nothing is selected).
+const totalRowSet = computed(() => (selectedCats.value.size ? matrixRows.value.filter((r) => isSel(r.name)) : matrixRows.value));
+const totalsByYear = computed(() => {
+  const map = new Map<number, number>();
+  for (const r of totalRowSet.value) for (const y of yearsInRange.value) map.set(y, (map.get(y) ?? 0) + (r.byYear.get(y) ?? 0));
+  return map;
+});
+const grandTotalSel = computed(() => [...totalsByYear.value.values()].reduce((a, b) => a + b, 0));
+
+// Multi-line chart driven by the selection: one line per category + a bold Total line.
+const hasSelection = computed(() => selectedCats.value.size > 0);
+const selNames = computed(() => matrixRows.value.filter((r) => isSel(r.name)).map((r) => r.name));
+const monthCatValue = (m: YearSummary["months"][number], name: string) => {
+  const c = m.categories.find((x) => x.name === name);
+  return c ? n(c.net_total) : 0;
+};
+const selKpis = computed(() => {
+  if (!hasSelection.value) return null;
+  const ms = viewMonths.value;
+  const perMonth = ms.map((m) => ({ month: m.month, v: selNames.value.reduce((a, name) => a + monthCatValue(m, name), 0) }));
+  const total = perMonth.reduce((a, p) => a + p.v, 0);
+  const biggest = perMonth.reduce((mx, p) => (p.v > mx.v ? p : mx), { month: "", v: 0 });
+  return { total, avg: total / Math.max(1, ms.length), biggestMonth: biggest.month ? monthLabel(biggest.month) : "—", biggestVal: biggest.v };
+});
+const selChartOption = computed(() => {
+  if (!hasSelection.value) return {};
+  const ms = viewMonths.value;
+  const axis = isDark.value ? "#8aa39b" : "#5b6f68";
+  const split = isDark.value ? "rgba(255,255,255,.08)" : "rgba(16,32,27,.08)";
+  const tipBg = isDark.value ? "#14201d" : "#ffffff";
+  const tipInk = isDark.value ? "#e8f0ed" : "#10201b";
+  const totalColor = isDark.value ? "#e8efec" : "#16211e";
+  const labels = ms.map((m) => monthLabel(m.month));
+  const catSeries = selNames.value.map((name, i) => ({
+    name,
+    type: "line",
+    smooth: false,
+    symbol: "circle",
+    symbolSize: 5,
+    lineStyle: { width: 2 },
+    itemStyle: { color: CAT_PALETTE[i % CAT_PALETTE.length] },
+    data: ms.map((m) => monthCatValue(m, name)),
+  }));
+  const total = {
+    name: "Total",
+    type: "line",
+    smooth: false,
+    symbol: "circle",
+    symbolSize: 6,
+    z: 5,
+    lineStyle: { width: 3.2 },
+    itemStyle: { color: totalColor },
+    data: ms.map((m) => selNames.value.reduce((a, name) => a + monthCatValue(m, name), 0)),
+  };
+  return {
+    color: [...selNames.value.map((_, i) => CAT_PALETTE[i % CAT_PALETTE.length]), totalColor],
+    tooltip: { trigger: "axis", backgroundColor: tipBg, borderColor: split, borderWidth: 1, textStyle: { color: tipInk, fontSize: 12 },
+      valueFormatter: (v: number) => brlF(v) },
+    legend: { data: [...selNames.value, "Total"], top: 0, textStyle: { color: axis, fontSize: 12 }, itemWidth: 16, itemHeight: 3, type: "scroll" },
+    grid: { left: 58, right: 18, top: 34, bottom: 28 },
+    xAxis: { type: "category", data: labels, axisLabel: { color: axis, fontSize: 11 }, axisLine: { lineStyle: { color: split } }, axisTick: { show: false } },
+    yAxis: { type: "value", axisLabel: { color: axis, fontSize: 11, formatter: (v: number) => (v >= 1000 ? v / 1000 + "k" : "" + v) }, splitLine: { lineStyle: { color: split } } },
+    series: [...catSeries, total],
+  };
+});
 </script>
 
 <template>
@@ -386,6 +496,81 @@ const svgChart = computed(() => {
             <span v-if="n(data.payroll_total) > 0"><i class="dotc ded"></i> Descontos · {{ brl(data.payroll_total) }}</span>
           </div>
         </div>
+      </div>
+
+      <!-- Matriz-seletor: categoria × ano (o próprio seletor alimenta o gráfico) -->
+      <div class="card" v-if="matrixRows.length">
+        <div class="mxbar">
+          <div>
+            <h2>Categorias × ano</h2>
+            <p class="hint" style="margin:0">Clique na linha para marcar/desmarcar. O gráfico abaixo segue a seleção.</p>
+          </div>
+          <div class="mxtools">
+            <button class="tbtn" @click="selectAllCats">Marcar todas</button>
+            <button class="tbtn" @click="clearCats">Limpar</button>
+            <span class="yrs">Ano
+              <select v-model="yearFrom" @change="onYearChange" aria-label="Ano inicial">
+                <option :value="null">início</option>
+                <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
+              </select>
+              <span class="dash">—</span>
+              <select v-model="yearTo" @change="onYearChange" aria-label="Ano final">
+                <option :value="null">fim</option>
+                <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
+              </select>
+            </span>
+          </div>
+        </div>
+        <div class="mxwrap">
+          <table class="mx">
+            <thead>
+              <tr>
+                <th>Categoria</th>
+                <th v-for="y in yearsInRange" :key="y">{{ y }}</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in matrixRows" :key="r.name" :class="{ sel: isSel(r.name) }" @click="toggleCat(r.name)">
+                <td>
+                  <span class="catname">
+                    <span class="ck" :class="{ on: isSel(r.name) }">{{ isSel(r.name) ? "✓" : "" }}</span>
+                    {{ r.name }}
+                  </span>
+                </td>
+                <td v-for="y in yearsInRange" :key="y">
+                  <span
+                    v-if="(r.byYear.get(y) ?? 0) !== 0"
+                    class="cell"
+                    :style="{ backgroundColor: `color-mix(in srgb, var(--clr-accent) ${cellPct(r.byYear.get(y) ?? 0)}%, transparent)`, color: cellPct(r.byYear.get(y) ?? 0) > 52 ? '#fff' : undefined }"
+                  >{{ brl(r.byYear.get(y) ?? 0) }}</span>
+                  <span v-else class="cell muted">—</span>
+                </td>
+                <td><b>{{ brl(r.total) }}</b></td>
+              </tr>
+              <tr class="tot">
+                <td>{{ selectedCats.size ? `Total (${selectedCats.size} selec.)` : "Total (todas)" }}</td>
+                <td v-for="y in yearsInRange" :key="y">{{ brl(totalsByYear.get(y) ?? 0) }}</td>
+                <td>{{ brl(grandTotalSel) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="heat-legend"><span>menor</span><span class="heat-bar"></span><span>maior</span> · intensidade por valor</div>
+      </div>
+
+      <!-- Gráfico multi-linha da seleção -->
+      <div class="card" v-if="matrixRows.length">
+        <h2>Evolução por categoria <span class="hint inline">uma linha por categoria + Total</span></h2>
+        <template v-if="hasSelection && viewMonths.length">
+          <div class="selkpis" v-if="selKpis">
+            <div class="skpi"><span class="l">Total (seleção)</span><span class="v">{{ brl(selKpis.total) }}</span></div>
+            <div class="skpi"><span class="l">Média / mês</span><span class="v">{{ brl(selKpis.avg) }}</span></div>
+            <div class="skpi"><span class="l">Maior mês</span><span class="v">{{ selKpis.biggestMonth }}</span><span class="s">{{ brl(selKpis.biggestVal) }}</span></div>
+          </div>
+          <VChart :option="selChartOption" autoresize style="height: 320px" />
+        </template>
+        <p v-else class="hint">Marque categorias na matriz acima para ver a evolução mês a mês (uma linha por categoria + uma linha de Total).</p>
       </div>
     </template>
 
@@ -621,4 +806,41 @@ h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 6px;
 .dotc.fix { background: var(--clr-accent); } .dotc.var { background: var(--clr-amber); }
 
 @media (max-width: 760px) { .row2 { grid-template-columns: 1fr; } }
+
+/* ── Matriz-seletor categoria × ano ── */
+.mxbar { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; }
+.mxtools { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tbtn { font-family: inherit; font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: var(--radius-md);
+  border: 1px solid var(--clr-stroke); background: var(--clr-surface); color: var(--clr-text-secondary); cursor: pointer; }
+.tbtn:hover { border-color: var(--clr-accent); color: var(--clr-accent); }
+.mxtools .yrs { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 600; color: var(--clr-text-secondary); }
+.mxtools .yrs select { font-family: inherit; font-size: 13px; font-weight: 600; padding: 6px 10px;
+  border: 1px solid var(--clr-stroke); border-radius: var(--radius-md); background: var(--clr-surface); color: var(--clr-text-primary); cursor: pointer; }
+.mxtools .dash { color: var(--clr-text-muted); }
+.mxwrap { overflow-x: auto; border: 1px solid var(--clr-stroke); border-radius: var(--radius-md); }
+table.mx { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 480px; font-variant-numeric: tabular-nums; }
+table.mx th, table.mx td { padding: 9px 12px; text-align: right; border-bottom: 1px solid var(--clr-stroke-soft); white-space: nowrap; }
+table.mx thead th { font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--clr-text-muted); font-weight: 700; background: var(--clr-surface-alt); }
+table.mx td:first-child, table.mx th:first-child { text-align: left; position: sticky; left: 0; background: var(--clr-surface); }
+table.mx thead th:first-child { background: var(--clr-surface-alt); }
+table.mx tbody tr { cursor: pointer; }
+table.mx tbody tr:not(.tot):hover td { background: var(--clr-surface-alt); }
+table.mx tbody tr:not(.tot):hover td:first-child { background: var(--clr-surface-alt); }
+table.mx tr:last-child td { border-bottom: none; }
+table.mx tr.tot td { font-weight: 800; background: var(--clr-surface-alt); }
+table.mx tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--clr-accent); font-weight: 700; color: var(--clr-text-primary); }
+.mx .cell { border-radius: 6px; padding: 3px 8px; display: inline-block; min-width: 60px; }
+.mx .cell.muted { color: var(--clr-text-muted); background: none; }
+.mx .catname { display: inline-flex; align-items: center; gap: 8px; }
+.mx .ck { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--clr-stroke); display: inline-grid; place-items: center; font-size: 10px; color: #fff; flex: none; }
+.mx .ck.on { background: var(--clr-accent); border-color: var(--clr-accent); }
+.heat-legend { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--clr-text-muted); margin-top: 10px; }
+.heat-bar { height: 10px; width: 110px; border-radius: 5px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--clr-accent) 10%, transparent), var(--clr-accent)); }
+
+.selkpis { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.skpi { border: 1px solid var(--clr-stroke); border-radius: 10px; padding: 10px 14px; min-width: 130px; }
+.skpi .l { display: block; font-size: 11.5px; color: var(--clr-text-secondary); font-weight: 600; }
+.skpi .v { display: block; font-size: 18px; font-weight: 800; letter-spacing: -.02em; margin-top: 2px; }
+.skpi .s { display: block; font-size: 11px; color: var(--clr-text-muted); }
 </style>
