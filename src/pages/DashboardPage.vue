@@ -224,6 +224,48 @@ onMounted(async () => {
   if (store.hasData) await store.loadDashboard();
 });
 
+// Quick add: one-off debit/credit for the selected month (freelance, an unexpected bill…).
+const qaOpen = ref(false);
+const qaKind = ref<"expense" | "income">("expense");
+const qaDesc = ref("");
+const qaAmount = ref("");
+const qaCat = ref("");
+const qaError = ref<string | null>(null);
+const qaSuggestions = computed(() =>
+  qaKind.value === "income"
+    ? ["Freelance", "Rendimentos", "Bolsa de Pesquisa", "Reembolso", "Outros"]
+    : settingsStore.categoryGroups.map((g) => g.name)
+);
+function qaMonth(): string {
+  if (store.monthFilter) return store.monthFilter;
+  const dt = new Date();
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+}
+async function addQuick(): Promise<void> {
+  qaError.value = null;
+  const amt = parseFloat(qaAmount.value.replace(",", "."));
+  if (!qaDesc.value.trim()) { qaError.value = "Informe uma descrição."; return; }
+  if (!qaCat.value.trim()) { qaError.value = "Informe uma categoria."; return; }
+  if (!(amt > 0)) { qaError.value = "Informe um valor maior que zero."; return; }
+  try {
+    await store.addManualEntry({
+      kind: qaKind.value,
+      description: qaDesc.value.trim(),
+      amount: String(amt),
+      category: qaCat.value.trim(),
+      month: qaMonth(),
+      recurring: false,
+      isSalary: false,
+    });
+    qaDesc.value = ""; qaAmount.value = ""; qaCat.value = "";
+    qaOpen.value = false;
+    await store.loadManualEntries();
+    await store.loadDashboard();
+  } catch (e) {
+    qaError.value = String(e instanceof Error ? e.message : e);
+  }
+}
+
 // password prompt for encrypted BTG files
 const pwPrompt = ref(false);
 const pwPaths = ref<string[]>([]);
@@ -351,6 +393,7 @@ function refLabel(): string {
             <button type="button" :class="{ active: avgMode }" @click="avgMode = true">Média/mês</button>
           </div>
           <span v-else-if="d" class="period">{{ periodLabel() }}</span>
+          <button class="qa-btn" @click="qaOpen = !qaOpen">+ Lançamento avulso</button>
           <ImportButton @import-requested="handleImport" />
         </div>
       </div>
@@ -361,6 +404,21 @@ function refLabel(): string {
         <template v-if="income > 0"> Receitas <b>{{ fmt(income) }}</b> · saldo <b :class="balancePositive ? 'ok-text' : 'red-text'">{{ fmt(balance) }}</b>.</template>
       </p>
     </header>
+
+    <!-- Quick add: one-off debit/credit for the month -->
+    <div v-if="qaOpen" class="qa-card">
+      <div class="qa-kind">
+        <button type="button" :class="{ active: qaKind === 'expense' }" @click="qaKind = 'expense'">↓ Débito</button>
+        <button type="button" :class="{ active: qaKind === 'income' }" @click="qaKind = 'income'">↑ Crédito</button>
+      </div>
+      <input v-model="qaDesc" class="qa-in" type="text" :placeholder="qaKind === 'income' ? 'Ex: Freelance' : 'Ex: Conta avulsa'" @keyup.enter="addQuick" />
+      <input v-model="qaAmount" class="qa-in qa-amt" type="text" inputmode="decimal" placeholder="0,00" @keyup.enter="addQuick" />
+      <input v-model="qaCat" class="qa-in" type="text" list="qa-cats" placeholder="Categoria" @keyup.enter="addQuick" />
+      <datalist id="qa-cats"><option v-for="c in qaSuggestions" :key="c" :value="c" /></datalist>
+      <span class="qa-mes">{{ formatMonthFilter(qaMonth()) }}</span>
+      <button class="qa-add" :disabled="store.loading" @click="addQuick">Adicionar</button>
+      <span v-if="qaError" class="qa-err">⚠ {{ qaError }}</span>
+    </div>
 
     <ImportWarnings :warnings="lastWarnings" />
 
@@ -695,6 +753,20 @@ h1 { font-size: clamp(22px, 3vw, 32px); line-height: 1.1; letter-spacing: -.02em
 .avg-toggle button { font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); background: var(--surface); border: none; padding: 6px 11px; cursor: pointer; }
 .avg-toggle button:hover { background: var(--surface-2); }
 .avg-toggle button.active { background: var(--accent); color: #fff; }
+.qa-btn { font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--accent); background: var(--surface); border: 1px solid var(--accent); border-radius: 8px; padding: 6px 11px; cursor: pointer; white-space: nowrap; }
+.qa-btn:hover { background: var(--accent-soft); }
+.qa-card { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; box-shadow: var(--shadow-sm); }
+.qa-kind { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.qa-kind button { font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); background: var(--surface); border: none; padding: 6px 10px; cursor: pointer; }
+.qa-kind button.active:first-child { background: var(--red); color: #fff; }
+.qa-kind button.active:last-child { background: var(--accent); color: #fff; }
+.qa-in { font-family: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); outline: none; }
+.qa-in:focus { border-color: var(--accent); }
+.qa-in.qa-amt { width: 100px; }
+.qa-mes { font-size: 12px; color: var(--ink-3); }
+.qa-add { font-family: inherit; font-size: 13px; font-weight: 700; padding: 6px 14px; border-radius: 8px; border: none; background: var(--accent); color: #fff; cursor: pointer; }
+.qa-add:disabled { opacity: .5; }
+.qa-err { font-size: 12px; color: var(--red); flex-basis: 100%; }
 
 /* Password modal */
 .pw-overlay { position: fixed; inset: 0; background: rgba(20,33,30,.45); display: flex; align-items: center; justify-content: center; z-index: 200; }
