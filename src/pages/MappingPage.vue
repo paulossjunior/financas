@@ -108,8 +108,8 @@ function fmt0(v: number): string {
 }
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 function shortDate(iso: string): string {
-  const [, m, d] = iso.split("-");
-  return `${d}/${MONTHS[parseInt(m) - 1] ?? m}`;
+  const [y, m, d] = iso.split("-");
+  return `${d}/${MONTHS[parseInt(m) - 1] ?? m}/${y.slice(2)}`;
 }
 </script>
 
