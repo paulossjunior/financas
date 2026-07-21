@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/006-inflation-indicators/plan.md
+at specs/007-inflation-explainer/plan.md
 <!-- SPECKIT END -->
 
 ## Project overview
