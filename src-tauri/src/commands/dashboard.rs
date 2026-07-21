@@ -36,10 +36,12 @@ pub async fn get_year_summary_cmd(
     year_to: Option<i32>,
     store: State<'_, SharedStore>,
     config: State<'_, Mutex<AppConfig>>,
+    db: State<'_, SharedDb>,
 ) -> Result<YearSummary, String> {
     let manual = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
     let invoices = store.lock().map_err(|e| e.to_string())?.list_owned();
-    Ok(compute_year_summary(&invoices, &manual, year_from, year_to))
+    let payslips = db.lock().map_err(|e| e.to_string())?.load_payslips().unwrap_or_default();
+    Ok(compute_year_summary(&invoices, &manual, &payslips, year_from, year_to))
 }
 
 #[tauri::command]
