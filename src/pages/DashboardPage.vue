@@ -13,11 +13,22 @@ const lastWarnings = ref<ParseWarning[]>([]);
 const d = computed(() => store.dashboard);
 const num = (v?: string) => parseFloat(v ?? "0") || 0;
 
-const income = computed(() => num(d.value?.total_income));
-const expense = computed(() => num(d.value?.net_total));
-const balance = computed(() => num(d.value?.balance));
-const cardNet = computed(() => num(d.value?.total_card_net));
-const fixo = computed(() => num(d.value?.total_manual_expense));
+// "Todos os meses" sums the whole period. avgMode divides period aggregates by the
+// number of months so figures read as a typical month; Total keeps period sums.
+const isAllMonths = computed(() => !store.monthFilter);
+const monthCount = computed(() => Math.max(1, d.value?.monthly_trend?.length ?? 0));
+const avgMode = ref(false);
+const showAvgToggle = computed(() => isAllMonths.value && monthCount.value > 1);
+// Divides period-aggregate values (from the dashboard) when showing the monthly average.
+const divisor = computed(() => (showAvgToggle.value && avgMode.value ? monthCount.value : 1));
+// Multiplies already-monthly values (raw manual entries) up to the period total in Total mode.
+const utilMult = computed(() => (showAvgToggle.value && !avgMode.value ? monthCount.value : 1));
+
+const income = computed(() => num(d.value?.total_income) / divisor.value);
+const expense = computed(() => num(d.value?.net_total) / divisor.value);
+const balance = computed(() => num(d.value?.balance) / divisor.value);
+const cardNet = computed(() => num(d.value?.total_card_net) / divisor.value);
+const fixo = computed(() => num(d.value?.total_manual_expense) / divisor.value);
 const futureParcelas = computed(() => num(d.value?.installments_future_total));
 const monthParcelas = computed(() => num(d.value?.installments_month_total));
 const balancePositive = computed(() => balance.value >= 0);
@@ -26,7 +37,9 @@ const savingsRate = computed(() => (income.value > 0 ? (balance.value / income.v
 const cardPct = computed(() => (expense.value > 0 ? (cardNet.value / expense.value) * 100 : 0));
 const fixoPct = computed(() => (expense.value > 0 ? (fixo.value / expense.value) * 100 : 0));
 
-const categories = computed<Category[]>(() => d.value?.categories ?? []);
+const categories = computed<Category[]>(() =>
+  (d.value?.categories ?? []).map((c) => ({ ...c, net_total: String(num(c.net_total) / divisor.value) }))
+);
 const catMax = computed(() => Math.max(1, ...categories.value.map((c) => num(c.net_total))));
 const topTransactions = computed(() => d.value?.top_transactions ?? []);
 const topMax = computed(() => Math.max(1, ...topTransactions.value.map((t) => num(t.amount))));
@@ -44,7 +57,8 @@ const aguaAmt = computed(() =>
 const energiaAmt = computed(() =>
   expenseEntries.value.filter((e) => ENERGIA_RE.test(e.description)).reduce((a, e) => a + num(e.amount), 0)
 );
-const utilities = computed(() => aguaAmt.value + energiaAmt.value);
+// aguaAmt/energiaAmt are already monthly (raw entries); scale up to the period in Total mode.
+const utilities = computed(() => (aguaAmt.value + energiaAmt.value) * utilMult.value);
 const utilitiesHigh = computed(() => aguaAmt.value >= 300 || energiaAmt.value >= 500);
 
 const outros = computed(() => categories.value.find((c) => c.name === "Outros"));
@@ -55,7 +69,7 @@ const moradia = computed(() =>
 
 // weekday: Mon..Sun
 const WD_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
-const weekday = computed(() => (d.value?.weekday_spending ?? []).map(num));
+const weekday = computed(() => (d.value?.weekday_spending ?? []).map((v) => num(v) / divisor.value));
 const weekdayMax = computed(() => Math.max(1, ...weekday.value));
 const weekTotal = computed(() => weekday.value.reduce((a, b) => a + b, 0));
 const weekendPct = computed(() => {
@@ -239,15 +253,27 @@ function formatMonthFilter(month: string): string {
   const [year, m] = month.split("-");
   return `${MONTHS_FULL[parseInt(m) - 1] ?? m}/${year}`;
 }
-function monthTitle(): string {
+function titleSuffix(): string {
   const p = d.value?.period;
   if (!p || !p.from) return "";
-  const mf = parseInt(p.from.split("-")[1]);
-  return MONTHS_FULL[mf - 1]?.toLowerCase() ?? "";
+  if (!isAllMonths.value) {
+    const mf = parseInt(p.from.split("-")[1]);
+    return `em ${MONTHS_FULL[mf - 1]?.toLowerCase() ?? ""}`;
+  }
+  return avgMode.value ? "· média por mês" : `· período ${periodLabel()}`;
 }
+const scopeWord = computed(() => {
+  if (!isAllMonths.value) return "do mês";
+  return avgMode.value ? "média/mês" : "do período";
+});
 function refLabel(): string {
   const p = d.value?.period;
   if (!p || !p.from) return "—";
+  if (isAllMonths.value && p.from !== p.to) {
+    const [yf, mf] = p.from.split("-");
+    const [yt, mt] = p.to.split("-");
+    return `${MONTHS[parseInt(mf) - 1].toLowerCase()}/${yf} – ${MONTHS[parseInt(mt) - 1].toLowerCase()}/${yt}`;
+  }
   const [y, mf] = p.from.split("-");
   return `${MONTHS[parseInt(mf) - 1].toLowerCase()}/${y}`;
 }
@@ -263,7 +289,7 @@ const fixosList = computed(() =>
       <div class="top-row">
         <div>
           <p class="eyebrow">Análise de despesas domésticas · Casa + Cartão BTG</p>
-          <h1>Custo total da casa<template v-if="monthTitle()"> em {{ monthTitle() }}</template></h1>
+          <h1>Custo total da casa<template v-if="titleSuffix()"> {{ titleSuffix() }}</template></h1>
         </div>
         <div class="top-actions">
           <select
@@ -276,6 +302,10 @@ const fixosList = computed(() =>
             <option value="">Todos os meses</option>
             <option v-for="m in availableMonths" :key="m" :value="m">{{ formatMonthFilter(m) }}</option>
           </select>
+          <div v-if="showAvgToggle" class="avg-toggle" role="group" aria-label="Total ou média">
+            <button type="button" :class="{ active: !avgMode }" @click="avgMode = false">Total</button>
+            <button type="button" :class="{ active: avgMode }" @click="avgMode = true">Média/mês</button>
+          </div>
           <span v-else-if="d" class="period">{{ periodLabel() }}</span>
           <ImportButton @import-requested="handleImport" />
         </div>
@@ -334,7 +364,7 @@ const fixosList = computed(() =>
         <h2>Indicadores</h2>
         <div class="kpis">
           <div :class="['kpi', 'flag', balancePositive ? 'flag-ok' : 'flag-red']">
-            <p class="lbl">Saldo do mês</p>
+            <p class="lbl">Saldo {{ scopeWord }}</p>
             <div class="val" :class="balancePositive ? 'ok-text' : 'red-text'">{{ fmt(balance) }}</div>
             <div class="foot" v-if="savingsRate !== null">{{ balancePositive ? "sobra" : "déficit" }} · {{ Math.abs(savingsRate).toFixed(0) }}% da receita</div>
             <div class="foot" v-else>cadastre receitas para ver o saldo</div>
@@ -345,12 +375,12 @@ const fixosList = computed(() =>
             <div class="foot">salário, bolsas, rendimentos</div>
           </div>
           <div class="kpi">
-            <p class="lbl">Custo total do mês</p>
+            <p class="lbl">Custo total {{ scopeWord }}</p>
             <div class="val">{{ fmt(expense) }}</div>
             <div class="foot">cartão {{ fmt0(cardNet) }} + fixos {{ fmt0(fixo) }}</div>
           </div>
           <div class="kpi">
-            <p class="lbl">Contas fixas / mês</p>
+            <p class="lbl">Contas fixas {{ scopeWord }}</p>
             <div class="val">{{ fmt(fixo) }}</div>
             <div class="foot">{{ fixoPct.toFixed(0) }}% das despesas</div>
           </div>
@@ -564,6 +594,10 @@ h1 { font-size: clamp(22px, 3vw, 32px); line-height: 1.1; letter-spacing: -.02em
 .period { font-size: 12px; font-weight: 600; color: var(--ink-2); background: var(--surface-2); padding: 3px 10px; border-radius: 100px; }
 .month-select { font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; outline: none; }
 .month-select:focus { border-color: var(--accent); }
+.avg-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.avg-toggle button { font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); background: var(--surface); border: none; padding: 6px 11px; cursor: pointer; }
+.avg-toggle button:hover { background: var(--surface-2); }
+.avg-toggle button.active { background: var(--accent); color: #fff; }
 
 /* Password modal */
 .pw-overlay { position: fixed; inset: 0; background: rgba(20,33,30,.45); display: flex; align-items: center; justify-content: center; z-index: 200; }
