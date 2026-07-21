@@ -50,7 +50,17 @@ pub fn get_dashboard(
         manual_agg.extend(payslip_aggs(p));
     }
 
-    Ok(compute_dashboard(&selected, &manual_agg, &filter))
+    let mut data = compute_dashboard(&selected, &manual_agg, &filter);
+
+    // Card forecast uses ALL invoices (not the month filter): the future commitment
+    // from installments is independent of which past month you are viewing.
+    let all_invoices: Vec<Invoice> = all.iter().map(|i| (*i).clone()).collect();
+    let forecast = crate::domain::forecast::compute_card_forecast(&all_invoices);
+    data.forecast_committed_total = crate::domain::forecast::forecast_committed_total(&forecast).to_string();
+    data.forecast_last_month = crate::domain::forecast::forecast_last_month(&forecast);
+    data.forecast_next = forecast.into_iter().take(6).collect();
+
+    Ok(data)
 }
 
 /// Turn a payslip into month aggregates: gross earnings as income + each deduction

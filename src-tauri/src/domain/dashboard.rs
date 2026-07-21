@@ -105,6 +105,11 @@ pub struct DashboardData {
     /// Detected recurring subscriptions (streaming, SaaS…) on the card.
     pub subscriptions: Vec<SubscriptionSummary>,
     pub subscriptions_total: String,
+    /// Card payment forecast (next months committed by installments). Filled by the
+    /// application layer from ALL invoices, so it is independent of the month filter.
+    pub forecast_next: Vec<crate::domain::forecast::ForecastPoint>,
+    pub forecast_committed_total: String,
+    pub forecast_last_month: String,
 }
 
 pub fn compute_dashboard(
@@ -215,6 +220,10 @@ pub fn compute_dashboard(
         installments_future_total: installments_future_total.to_string(),
         subscriptions,
         subscriptions_total: subscriptions_total.to_string(),
+        // Defaults; the application layer fills these from all invoices (filter-independent).
+        forecast_next: Vec::new(),
+        forecast_committed_total: "0".into(),
+        forecast_last_month: String::new(),
     }
 }
 

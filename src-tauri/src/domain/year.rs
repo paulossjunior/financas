@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::category::{aggregate_by_category, Category};
 use super::dashboard::CategorySnapshot;
+use super::forecast::{compute_card_forecast, ForecastPoint};
 use super::invoice::Invoice;
 use super::manual_entry::{EntryKind, ManualEntry};
 use super::payslip::Payslip;
@@ -58,6 +59,8 @@ pub struct YearSummary {
     pub card_ceiling: String,
     /// Ceiling with only salary-flagged income = max(0, salary_only − fixed_month).
     pub card_ceiling_salary: String,
+    /// Future card payments already committed by installments (continuous series).
+    pub card_forecast: Vec<ForecastPoint>,
 }
 
 /// Build the annual view. Unlike the monthly dashboard (grouped by invoice reference
@@ -308,6 +311,7 @@ pub fn compute_year_summary(
         fixed_month: fixed_month.to_string(),
         card_ceiling: card_ceiling.to_string(),
         card_ceiling_salary: card_ceiling_salary.to_string(),
+        card_forecast: compute_card_forecast(invoices),
     }
 }
 
