@@ -104,6 +104,31 @@ export interface YearSummary {
   card_ceiling_salary: string;
 }
 
+export interface PayslipItem {
+  kind: string; // "rendimento" | "desconto"
+  class: string; // "salario" | "bonus" | "wash" | "recorrente"
+  description: string;
+  amount: string;
+  net_share: string;
+  offsetting: boolean;
+}
+
+export interface Payslip {
+  id: string;
+  month: string;
+  gross: string;
+  real_gross: string;
+  deductions: string;
+  net: string;
+  salary_liq: string;
+  bonus_liq: string;
+  ir_base: string;
+  fgts: string;
+  items: PayslipItem[];
+  source_file: string;
+  imported_at: string;
+}
+
 export interface DashboardPeriod {
   from: string;
   to: string;

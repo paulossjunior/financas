@@ -7,6 +7,7 @@ import type {
   ImportResult,
   InvoiceInfo,
   ManualEntry,
+  Payslip,
   Transaction,
   YearSummary,
 } from "@/types/api.types";
@@ -197,6 +198,42 @@ export async function updateManualEntry(
 export async function removeManualEntry(id: string): Promise<void> {
   try {
     await invoke<void>("remove_manual_entry", { id });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+// ── Contracheque (payslip) ──
+
+/** Parse a payslip PDF (extract + classify) WITHOUT saving — for the confirm modal. */
+export async function importPayslip(path: string): Promise<Payslip> {
+  try {
+    return await invoke<Payslip>("import_payslip", { path });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+/** Persist a (possibly user-corrected) payslip; re-importing a month replaces it. */
+export async function savePayslip(payslip: Payslip): Promise<void> {
+  try {
+    await invoke<void>("save_payslip", { payslip });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function listPayslips(): Promise<Payslip[]> {
+  try {
+    return await invoke<Payslip[]>("list_payslips");
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function removePayslip(month: string): Promise<void> {
+  try {
+    await invoke<void>("remove_payslip", { month });
   } catch (e) {
     throw new Error(mapError(String(e)));
   }
