@@ -130,7 +130,8 @@
       <li><a href="#p9">Teto do cartão</a></li>
       <li><a href="#p10">Relatório em PDF</a></li>
       <li><a href="#p11">Dados e backup</a></li>
-      <li><a href="#p12">Dúvidas comuns</a></li>
+      <li><a href="#p12">Inflação (IPCA + pessoal)</a></li>
+      <li><a href="#p13">Dúvidas comuns</a></li>
     </ol>
   </nav>
 
@@ -363,7 +364,32 @@
     </section>
 
     <section id="p12">
-      <h2><span class="num">12</span> Dúvidas comuns</h2>
+      <h2><span class="num">12</span> Inflação (IPCA + pessoal)</h2>
+      <div class="fig"><svg viewBox="0 0 320 100" role="img" aria-label="IPCA oficial e inflação pessoal">
+        <line class="gl" x1="40" y1="84" x2="300" y2="84"></line>
+        <polyline class="k-am" stroke-width="2.5" fill="none" points="44,66 96,60 148,64 200,50 252,58 292,40"></polyline>
+        <polyline class="k-ac" stroke-width="2.5" fill="none" points="44,72 96,70 148,58 200,46 252,52 292,30"></polyline>
+        <circle class="s-am" cx="292" cy="40" r="3.5"></circle><circle class="s-ac" cx="292" cy="30" r="3.5"></circle>
+        <text class="lbl" x="44" y="96">IPCA</text><text class="lbl" x="250" y="96">sua inflação</text>
+      </svg></div>
+      <p>Na tela <b>Ano</b> (card completo) e no <b>Mês</b> (indicadores) o app mostra o <b>IPCA oficial</b> (mês, ano, 12 meses) e a sua <b>inflação pessoal</b>.</p>
+      <ol class="steps">
+        <li>Clique em <b>Atualizar índices</b> (precisa de internet só nesse clique). Os valores são baixados do IBGE e <b>salvos no seu computador</b>.</li>
+        <li>Depois disso funciona <b>offline</b> — o app usa o último índice salvo e mostra a data.</li>
+      </ol>
+      <h3>Como a inflação pessoal é calculada</h3>
+      <p>O IPCA é uma média nacional; o que <b>você</b> sente depende dos seus gastos. O app repondera as variações dos grupos do IPCA pelos seus pesos de gasto:</p>
+      <div class="callout"><span class="i">=</span><div><b>inflação pessoal (mês)</b> = soma de ( peso da categoria × variação do grupo do IPCA ) ÷ soma dos pesos</div></div>
+      <ul class="plain">
+        <li><b>Peso da categoria</b>: quanto você gastou nela (participação no total).</li>
+        <li><b>Variação do grupo</b>: a do grupo do IPCA correspondente (Alimentação, Habitação, Transportes, Saúde, Educação, Comunicação, Vestuário, Artigos de residência, Despesas pessoais). Categoria sem grupo usa o IPCA geral.</li>
+        <li>O app mostra a <b>diferença</b> (em p.p.) entre a sua inflação e o IPCA oficial.</li>
+      </ul>
+      <p class="muted">Base científica: a inflação é heterogênea entre famílias e o principal fator é a cesta de consumo — <a href="https://www.sciencedirect.com/science/article/pii/S0304393225000716" target="_blank" rel="noopener">"Beyond the headline: How personal exposure to inflation shapes the financial choices of households"</a> (ScienceDirect, 2025), além de working papers do BCE, BIS e BBVA. Índices: IBGE (agregados 1737 e 7060).</p>
+    </section>
+
+    <section id="p13">
+      <h2><span class="num">13</span> Dúvidas comuns</h2>
       <div class="fig"><svg viewBox="0 0 320 100" role="img" aria-label="Perguntas frequentes, funciona offline">
         <path d="M104 24 h72 a10 10 0 0 1 10 10 v24 a10 10 0 0 1 -10 10 h-40 l-14 12 v-12 h-18 a10 10 0 0 1 -10 -10 v-24 a10 10 0 0 1 10 -10 z" class="s-ac"/>
         <text x="140" y="56" text-anchor="middle" class="w" style="font-family:var(--sans);font-size:24px;font-weight:800">?</text>

@@ -34,6 +34,26 @@ Aplicativo desktop de finanças pessoais — importa faturas do cartão **BTG** 
 **Relatórios**
 - Relatório do **mês** e do **período** (respeita o filtro) → **exportar para PDF** pelo navegador do sistema.
 
+**Inflação**
+- **IPCA oficial** (mês, ano, 12 meses) + **inflação pessoal** e o IPCA mensal no gráfico do ano. Índices vêm do IBGE por um botão **"Atualizar índices"** (opt-in) e ficam **salvos localmente** (offline depois). Veja [como a inflação pessoal é calculada](#como-a-inflação-pessoal-é-calculada).
+
+---
+
+## Como a inflação pessoal é calculada
+
+O IPCA oficial é uma média nacional; a inflação que **você** sente depende da sua cesta de gastos. O app calcula sua **inflação pessoal** reponderando as variações dos grupos do IPCA pelos seus próprios pesos de gasto:
+
+```
+inflação pessoal (mês) = Σ ( peso_da_categoria × variação_do_grupo_IPCA ) / Σ pesos
+```
+
+- **peso_da_categoria** — quanto você gastou naquela categoria (participação no total).
+- **variação_do_grupo** — a variação mensal do grupo do IPCA correspondente (Alimentação e bebidas, Habitação, Transportes, Saúde e cuidados pessoais, Educação, Comunicação, Vestuário, Artigos de residência, Despesas pessoais).
+- Categorias sem grupo correspondente usam o **IPCA geral**; sem gastos, a inflação pessoal iguala o IPCA.
+- O app mostra a diferença (em pontos percentuais) entre a sua inflação e o IPCA oficial.
+
+**Base científica**: a inflação é heterogênea entre famílias e o principal fator é a composição da cesta de consumo — documentado em Nielsen & Cavallo et al., *"Beyond the headline: How personal exposure to inflation shapes the financial choices of households"* (Journal of Monetary Economics / ScienceDirect, 2025) — https://www.sciencedirect.com/science/article/pii/S0304393225000716 — e em working papers do BCE, BIS e BBVA. Fonte dos índices: **IBGE** (agregados 1737 e 7060).
+
 ---
 
 ## Instalação
