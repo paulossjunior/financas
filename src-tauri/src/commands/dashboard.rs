@@ -5,9 +5,42 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use uuid::Uuid;
 
+use crate::application::recurring_fixed::build_observations;
 use crate::application::{get_dashboard::get_dashboard, store::SharedStore};
+use crate::domain::bank_statement::BankEntry;
+use crate::domain::manual_entry::{EntryKind, ManualEntry};
+use crate::domain::recurring::{is_manual_superseded, RecurringCategory};
 use crate::domain::{compute_year_summary, AppConfig, DashboardData, DashboardFilter, YearSummary};
 use crate::infrastructure::db::{persist, SharedDb};
+
+/// Fold bank entries into the manual-entry pipeline as recurring-aware fixed expenses:
+/// - a user manual fixo is dropped when a realized recurring entry supersedes it
+///   (same category + month), so nothing is counted twice;
+/// - a bank expense in a recurring, in-vigência category is reclassified as a fixed
+///   (recurring) expense instead of a one-off (avulso).
+fn apply_recurring(
+    mut manual: Vec<ManualEntry>,
+    bank: &[BankEntry],
+    invoices: &[crate::domain::invoice::Invoice],
+    recurring_cats: &[RecurringCategory],
+) -> Vec<ManualEntry> {
+    let obs = build_observations(invoices, bank);
+    manual.retain(|e| {
+        !(e.kind == EntryKind::Expense
+            && e.recurring
+            && is_manual_superseded(&e.category, &e.month, recurring_cats, &obs))
+    });
+    manual.extend(bank.iter().map(|b| {
+        let mut m = b.to_manual_entry();
+        if m.kind == EntryKind::Expense
+            && recurring_cats.iter().any(|c| c.category == m.category && c.active_in(&m.month))
+        {
+            m.recurring = true;
+        }
+        m
+    }));
+    manual
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InvoiceInfo {
@@ -26,12 +59,17 @@ pub async fn get_dashboard_cmd(
     config: State<'_, Mutex<AppConfig>>,
     db: State<'_, SharedDb>,
 ) -> Result<DashboardData, String> {
-    let mut manual_entries = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
-    let (payslips, bank) = {
+    let manual_entries = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
+    let (payslips, bank, recurring_cats) = {
         let d = db.lock().map_err(|e| e.to_string())?;
-        (d.load_payslips().unwrap_or_default(), d.load_bank_entries().unwrap_or_default())
+        (
+            d.load_payslips().unwrap_or_default(),
+            d.load_bank_entries().unwrap_or_default(),
+            d.load_recurring_categories().unwrap_or_default(),
+        )
     };
-    manual_entries.extend(bank.iter().map(|b| b.to_manual_entry()));
+    let invoices = store.lock().map_err(|e| e.to_string())?.list_owned();
+    let manual_entries = apply_recurring(manual_entries, &bank, &invoices, &recurring_cats);
     let store_lock = store.lock().map_err(|e| e.to_string())?;
     get_dashboard(&store_lock, &manual_entries, &payslips, filter.unwrap_or_default())
 }
@@ -44,13 +82,17 @@ pub async fn get_year_summary_cmd(
     config: State<'_, Mutex<AppConfig>>,
     db: State<'_, SharedDb>,
 ) -> Result<YearSummary, String> {
-    let mut manual = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
+    let manual = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
     let invoices = store.lock().map_err(|e| e.to_string())?.list_owned();
-    let (payslips, bank) = {
+    let (payslips, bank, recurring_cats) = {
         let d = db.lock().map_err(|e| e.to_string())?;
-        (d.load_payslips().unwrap_or_default(), d.load_bank_entries().unwrap_or_default())
+        (
+            d.load_payslips().unwrap_or_default(),
+            d.load_bank_entries().unwrap_or_default(),
+            d.load_recurring_categories().unwrap_or_default(),
+        )
     };
-    manual.extend(bank.iter().map(|b| b.to_manual_entry()));
+    let manual = apply_recurring(manual, &bank, &invoices, &recurring_cats);
     Ok(compute_year_summary(&invoices, &manual, &payslips, year_from, year_to))
 }
 

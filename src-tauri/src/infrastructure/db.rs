@@ -12,6 +12,7 @@ use crate::domain::bank_statement::BankEntry;
 use crate::domain::invoice::{Invoice, YearMonth};
 use crate::domain::manual_entry::{EntryKind, ManualEntry};
 use crate::domain::payslip::{Payslip, PayslipItem};
+use crate::domain::recurring::RecurringCategory;
 use crate::domain::transaction::{InstallmentInfo, Transaction};
 use crate::domain::{AppConfig, CategoryRule};
 
@@ -141,6 +142,14 @@ impl Database {
                     category     TEXT NOT NULL,
                     amount       TEXT NOT NULL,
                     kind         TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS recurring_categories (
+                    category    TEXT PRIMARY KEY,
+                    start_month TEXT,
+                    end_month   TEXT
+                );
+                CREATE TABLE IF NOT EXISTS dismissed_recurring_suggestions (
+                    target TEXT PRIMARY KEY
                 );
                 ",
             )
@@ -653,6 +662,79 @@ impl Database {
 
     pub fn clear_bank_entries(&mut self) -> Result<(), String> {
         self.conn.execute("DELETE FROM bank_entries", []).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    // ── Recurring categories + dismissed suggestions (feature 010) ──
+
+    pub fn load_recurring_categories(&self) -> Result<Vec<RecurringCategory>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT category, start_month, end_month FROM recurring_categories ORDER BY category")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(RecurringCategory {
+                    category: r.get(0)?,
+                    start_month: r.get(1)?,
+                    end_month: r.get(2)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    /// Upsert (recurring=true) or remove (recurring=false) a category's recurrence.
+    /// `start_month`/`end_month` are "YYYY-MM" or None (open-ended vigência).
+    pub fn set_recurring_category(
+        &mut self,
+        category: &str,
+        recurring: bool,
+        start_month: Option<&str>,
+        end_month: Option<&str>,
+    ) -> Result<(), String> {
+        if recurring {
+            self.conn
+                .execute(
+                    "INSERT INTO recurring_categories (category, start_month, end_month) VALUES (?1, ?2, ?3)
+                     ON CONFLICT(category) DO UPDATE SET start_month = ?2, end_month = ?3",
+                    params![category, start_month, end_month],
+                )
+                .map_err(|e| e.to_string())?;
+        } else {
+            self.conn
+                .execute("DELETE FROM recurring_categories WHERE category = ?1", params![category])
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    pub fn load_dismissed_suggestions(&self) -> Result<Vec<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT target FROM dismissed_recurring_suggestions")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    pub fn dismiss_suggestion(&mut self, target: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO dismissed_recurring_suggestions (target) VALUES (?1)",
+                params![target],
+            )
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 }
