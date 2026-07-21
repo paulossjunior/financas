@@ -75,6 +75,20 @@ fn month_num(abbr: &str) -> Option<u32> {
     }
 }
 
+/// Map a payslip deduction to an expense category, so it shows as a monthly cost.
+pub fn deduction_category(desc: &str) -> String {
+    let u = desc.to_uppercase();
+    if u.contains("IMPOSTO") || u.contains("IRRF") || u.contains("RENDA") {
+        "Impostos".into()
+    } else if u.contains("GEAP") || u.contains("SAUDE") || u.contains("SAÚDE") || u.contains("PSAUDE") || u.contains("PSAÚDE") {
+        "Saúde".into()
+    } else if u.contains("FUNPRESP") || u.contains("SEGURIDADE") || u.contains("PSS") || u.contains("PREVID") {
+        "Previdência".into()
+    } else {
+        "Descontos da folha".into()
+    }
+}
+
 /// Normalize a description for wash matching: uppercase, drop trailing pure-digit
 /// tokens (SIGEPE appends codes like "001"), collapse whitespace.
 fn norm_desc(s: &str) -> String {
