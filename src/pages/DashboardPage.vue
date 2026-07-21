@@ -4,6 +4,7 @@ import { useInvoiceStore } from "@/stores/invoice.store";
 import { useSettingsStore } from "@/stores/settings.store";
 import ImportButton from "@/components/import/ImportButton.vue";
 import ImportWarnings from "@/components/import/ImportWarnings.vue";
+import ReportOverlay from "@/components/report/ReportOverlay.vue";
 import type { Category, ManualEntry, ParseWarning, Payslip } from "@/types/api.types";
 import { listPayslips } from "@/services/tauri.service";
 
@@ -101,6 +102,21 @@ const bonusRows = computed(() => {
     .map(([description, amount]) => ({ description, amount: amount / divisor.value }))
     .sort((a, b) => b.amount - a.amount);
 });
+
+// Card ceiling for the month (renda recorrente / só salário − contas fixas).
+const salaryLiqMonth = computed(() => Math.max(0, salaryNet.value - bonusPayslip.value));
+const tetoRecorrente = computed(() => Math.max(0, salaryNet.value + bolsaIncome.value - fixo.value));
+const tetoSalario = computed(() => Math.max(0, salaryLiqMonth.value - fixo.value));
+const cardOverCeiling = computed(() => cardNet.value > tetoRecorrente.value);
+
+// ── Report overlay ──
+const reportOpen = ref(false);
+const reportTitle = computed(() =>
+  isAllMonths.value ? `Relatório · ${periodLabel()}` : `Relatório de ${formatMonthFilter(store.monthFilter ?? "")}`
+);
+const genDate = computed(() => new Date().toLocaleDateString("pt-BR"));
+const avulsoExpenses = computed(() => avulsoList.value.filter((e) => e.kind === "expense"));
+const topCats = computed(() => categories.value.slice(0, 8));
 
 const UTIL_RE = /energ|[aá]gua|luz|saneam/i;
 const AGUA_RE = /[aá]gua|saneam/i;
@@ -437,6 +453,7 @@ function refLabel(): string {
           </div>
           <span v-else-if="d" class="period">{{ periodLabel() }}</span>
           <button class="qa-btn" @click="toggleQuick">+ Lançamento avulso</button>
+          <button v-if="d" class="qa-btn" @click="reportOpen = true">📄 Relatório</button>
           <ImportButton @import-requested="handleImport" />
         </div>
       </div>
@@ -788,6 +805,98 @@ function refLabel(): string {
       <p>Importe uma fatura BTG ou cadastre receitas e despesas fixas.</p>
       <p class="hint">Vá em <strong>Receitas &amp; Fixos</strong> para adicionar salário, aluguel, energia e mais.</p>
     </div>
+
+    <!-- ── Report (print / PDF) ── -->
+    <ReportOverlay v-if="reportOpen && d" :title="reportTitle" @close="reportOpen = false">
+      <div class="sheet">
+        <div class="sheet-head">
+          <div class="logo">₣</div>
+          <div>
+            <div class="t">{{ isAllMonths ? `Relatório do período` : `Relatório de ${formatMonthFilter(store.monthFilter ?? "")}` }}</div>
+            <div class="s">Contracheque SIGEPE · Cartão BTG (ref. {{ refLabel() }}) · fixos + avulsos</div>
+          </div>
+          <div class="right">gerado em {{ genDate }}<br>{{ d.invoice_count }} fatura(s)</div>
+        </div>
+        <div class="sheet-body">
+
+          <div class="kpis">
+            <div class="kpi"><div class="l">Receita total</div><div class="v pos">{{ fmt0(income) }}</div><div class="sub" v-if="bolsaIncome > 0">contracheque + extra {{ fmt0(bolsaIncome) }}</div></div>
+            <div class="kpi"><div class="l">Despesa total</div><div class="v">{{ fmt0(expense) }}</div><div class="sub">cartão + fixos + avulsos + descontos</div></div>
+            <div class="kpi"><div class="l">Saldo {{ scopeWord }}</div><div class="v" :class="balancePositive ? 'pos' : 'neg'">{{ balancePositive ? "" : "− " }}{{ fmt0(Math.abs(balance)) }}</div><div class="sub">{{ balancePositive ? "sobra" : "déficit" }}</div></div>
+            <div class="kpi" v-if="hasPayslip"><div class="l">Líquido contracheque</div><div class="v">{{ fmt0(salaryNet) }}</div><div class="sub">salário {{ fmt0(salaryLiqMonth) }} + bônus {{ fmt0(bonusPayslip) }}</div></div>
+          </div>
+
+          <div>
+            <h3>Composição da despesa</h3>
+            <p class="cap">Onde o dinheiro foi. Avulsos contam separado dos fixos.</p>
+            <div class="compbar">
+              <div v-if="cardNet > 0" class="seg card" :style="{ flexGrow: cardNet }" :title="`Cartão ${fmt(cardNet)}`"><span v-if="cardPct > 10">Cartão {{ cardPct.toFixed(1) }}%</span></div>
+              <div v-if="fixo > 0" class="seg fix" :style="{ flexGrow: fixo }" :title="`Fixos ${fmt(fixo)}`"><span v-if="fixoPct > 10">Fixos {{ fixoPct.toFixed(1) }}%</span></div>
+              <div v-if="variableExpense > 0" class="seg avul" :style="{ flexGrow: variableExpense }" :title="`Avulsos ${fmt(variableExpense)}`"><span v-if="avulsoPct > 10">Avulsos {{ avulsoPct.toFixed(1) }}%</span></div>
+              <div v-if="payrollDed > 0" class="seg ded" :style="{ flexGrow: payrollDed }" :title="`Descontos ${fmt(payrollDed)}`"><span v-if="payrollPct > 10">Descontos {{ payrollPct.toFixed(1) }}%</span></div>
+            </div>
+            <div class="legend">
+              <span v-if="cardNet > 0"><i class="dot card"></i> Cartão — {{ fmt(cardNet) }}</span>
+              <span v-if="fixo > 0"><i class="dot fix"></i> Fixos — {{ fmt(fixo) }}</span>
+              <span v-if="variableExpense > 0"><i class="dot avul"></i> Avulsos — {{ fmt(variableExpense) }}</span>
+              <span v-if="payrollDed > 0"><i class="dot ded"></i> Descontos — {{ fmt(payrollDed) }}</span>
+            </div>
+          </div>
+
+          <div class="cols" v-if="avulsoExpenses.length || deductionRows.length">
+            <div class="panel hi-avul" v-if="avulsoExpenses.length">
+              <h3>Despesas avulsas</h3>
+              <p class="cap">Não-recorrentes — fora das contas fixas.</p>
+              <div v-for="e in avulsoExpenses" :key="e.id" class="row"><span class="n"><span class="badge avul">avulso</span>{{ e.description }}</span><b>{{ fmt(e.amount) }}</b></div>
+              <div class="row tot"><span class="n">Total avulso</span><b>{{ fmt(variableExpense) }}</b></div>
+            </div>
+            <div class="panel" v-if="deductionRows.length">
+              <h3>Descontos da folha</h3>
+              <p class="cap">Deduções do contracheque.</p>
+              <div v-for="r in deductionRows" :key="r.description" class="row"><span class="n"><span class="badge ded">folha</span>{{ r.description }}</span><b>{{ fmt(r.amount) }}</b></div>
+              <div class="row tot"><span class="n">Total descontos</span><b>{{ fmt(payrollDed) }}</b></div>
+            </div>
+          </div>
+
+          <div v-if="hasPayslip">
+            <h3>Teto do cartão</h3>
+            <p class="cap">Quanto o cartão poderia consumir sem furar o orçamento (renda − contas fixas).</p>
+            <div class="ceil">
+              <div class="sim">
+                <div class="h">Com renda recorrente</div>
+                <div class="v" :class="cardOverCeiling ? 'over' : 'ok'">{{ fmt0(tetoRecorrente) }}</div>
+                <div class="f">cartão {{ fmt0(cardNet) }} <b :class="cardOverCeiling ? 'over' : 'ok'">{{ cardOverCeiling ? "→ estourou" : "→ dentro" }}</b></div>
+              </div>
+              <div class="sim">
+                <div class="h">Só salário permanente</div>
+                <div class="v">{{ fmt0(tetoSalario) }}</div>
+                <div class="f">sem bônus/CD temporário</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="topCats.length">
+            <h3>Top categorias no cartão</h3>
+            <p class="cap">Maiores gastos {{ scopeWord }}.</p>
+            <div class="rank">
+              <div v-for="c in topCats" :key="c.name" class="rk">
+                <span class="n">{{ c.name }}</span>
+                <span class="bar" :style="{ width: pctOf(num(c.net_total), num(topCats[0].net_total)) + '%' }"></span>
+                <b>{{ fmt0(num(c.net_total)) }}</b>
+              </div>
+            </div>
+          </div>
+
+          <div class="insight" :class="{ warn: !balancePositive }">
+            <b>Leitura {{ scopeWord }}:</b>
+            <template v-if="!balancePositive"> déficit de {{ fmt0(Math.abs(balance)) }}.<template v-if="variableExpense > 0"> Avulsos somam {{ fmt0(variableExpense) }} — sem eles o mês fecharia em {{ fmt0(income - (expense - variableExpense)) }}.</template></template>
+            <template v-else> sobra de {{ fmt0(balance) }}<template v-if="savingsRate"> ({{ savingsRate.toFixed(0) }}% da receita)</template>.</template>
+            <template v-if="cardNet > 0"> Cartão representa {{ cardPct.toFixed(0) }}% da despesa.</template>
+          </div>
+
+        </div>
+      </div>
+    </ReportOverlay>
   </div>
 </template>
 

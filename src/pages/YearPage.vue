@@ -7,6 +7,7 @@ import { GridComponent, TooltipComponent, LegendComponent } from "echarts/compon
 import { CanvasRenderer } from "echarts/renderers";
 import { getYearSummary } from "@/services/tauri.service";
 import type { YearSummary } from "@/types/api.types";
+import ReportOverlay from "@/components/report/ReportOverlay.vue";
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent]);
 
@@ -165,6 +166,49 @@ const chartOption = computed(() => {
     ],
   };
 });
+
+// ── Report overlay (print / PDF) ── respects the active year + month filter.
+const reportOpen = ref(false);
+const genDate = new Date().toLocaleDateString("pt-BR");
+const pctOf = (v: number, max: number) => Math.max((v / max) * 100, 2);
+const filterLabel = computed(() => {
+  const yl = yearFrom.value && yearTo.value
+    ? (yearFrom.value === yearTo.value ? `${yearFrom.value}` : `${yearFrom.value} → ${yearTo.value}`)
+    : yearFrom.value ? `desde ${yearFrom.value}` : yearTo.value ? `até ${yearTo.value}` : "todos os anos";
+  const ms = viewMonths.value;
+  const ml = ms.length ? `${monthLabel(ms[0].month)}–${monthLabel(ms[ms.length - 1].month)}` : "—";
+  return `📅 ${yl} · ${ml}`;
+});
+const reportTitle = computed(() => `Relatório do período · ${filterLabel.value}`);
+const activeMonths = computed(() => viewMonths.value.length);
+const periodIncome = computed(() => viewMonths.value.reduce((a, m) => a + n(m.income), 0));
+const periodExpense = computed(() => viewMonths.value.reduce((a, m) => a + n(m.expense), 0));
+const periodCard = computed(() => viewMonths.value.reduce((a, m) => a + n(m.card), 0));
+const periodFixed = computed(() => viewMonths.value.reduce((a, m) => a + n(m.fixed), 0));
+const periodVariable = computed(() => viewMonths.value.reduce((a, m) => a + n(m.variable), 0));
+const periodPayroll = computed(() => viewMonths.value.reduce((a, m) => a + n(m.payroll), 0));
+const periodBalance = computed(() => periodIncome.value - periodExpense.value);
+const pctExp = (v: number) => (periodExpense.value > 0 ? (v / periodExpense.value) * 100 : 0);
+
+// Inline SVG line chart (income vs expense) — reliable for print, independent of ECharts canvas.
+const svgChart = computed(() => {
+  const ms = viewMonths.value;
+  const inc = ms.map((m) => n(m.income));
+  const exp = ms.map((m) => n(m.expense));
+  const maxV = Math.max(1, ...inc, ...exp);
+  const padL = 44, padR = 16, padT = 16, padB = 28, W = 680, H = 260;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const xAt = (i: number) => (ms.length <= 1 ? padL + plotW / 2 : padL + (i * plotW) / (ms.length - 1));
+  const yAt = (v: number) => padT + (1 - v / maxV) * plotH;
+  const pts = (arr: number[]) => arr.map((v, i) => `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join(" ");
+  const dots = (arr: number[]) => arr.map((v, i) => ({ cx: +xAt(i).toFixed(1), cy: +yAt(v).toFixed(1) }));
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((f) => ({
+    y: +yAt(maxV * f).toFixed(1),
+    label: Math.round((maxV * f) / 1000) + "k",
+  }));
+  const labels = ms.map((m, i) => ({ x: +xAt(i).toFixed(1), t: MONTHS[parseInt(m.month.split("-")[1], 10) - 1] }));
+  return { W, H, incPts: pts(inc), expPts: pts(exp), incDots: dots(inc), expDots: dots(exp), grid, labels };
+});
 </script>
 
 <template>
@@ -189,6 +233,7 @@ const chartOption = computed(() => {
           <option :value="null">fim</option>
           <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
         </select>
+        <button v-if="hasData" class="reportbtn" @click="reportOpen = true">📄 Relatório</button>
       </div>
     </header>
 
@@ -343,6 +388,129 @@ const chartOption = computed(() => {
         </div>
       </div>
     </template>
+
+    <!-- ── Report (print / PDF) — respects year + month filter ── -->
+    <ReportOverlay v-if="reportOpen && data" :title="reportTitle" @close="reportOpen = false">
+      <div class="sheet">
+        <div class="sheet-head">
+          <div class="logo">₣</div>
+          <div>
+            <div class="t">Relatório do período</div>
+            <div class="s">Receitas × despesas, tendência e ranking · {{ activeMonths }} {{ activeMonths === 1 ? "mês" : "meses" }}</div>
+          </div>
+          <div class="right"><span class="filterchip">{{ filterLabel }}</span><br>gerado em {{ genDate }}</div>
+        </div>
+        <div class="sheet-body">
+
+          <div class="kpis">
+            <div class="kpi"><div class="l">Meses ativos</div><div class="v">{{ activeMonths }}</div><div class="sub">no filtro</div></div>
+            <div class="kpi"><div class="l">Receita total</div><div class="v pos">{{ brl(periodIncome) }}</div><div class="sub">média {{ brl(periodIncome / Math.max(1, activeMonths)) }}/mês</div></div>
+            <div class="kpi"><div class="l">Despesa total</div><div class="v">{{ brl(periodExpense) }}</div><div class="sub">média {{ brl(periodExpense / Math.max(1, activeMonths)) }}/mês</div></div>
+            <div class="kpi"><div class="l">Saldo do período</div><div class="v" :class="periodBalance >= 0 ? 'pos' : 'neg'">{{ periodBalance >= 0 ? "" : "− " }}{{ brl(Math.abs(periodBalance)) }}</div><div class="sub">{{ periodBalance >= 0 ? "sobra" : "déficit" }}</div></div>
+          </div>
+
+          <div>
+            <h3>Composição da despesa</h3>
+            <p class="cap">Cartão, fixos, avulsos e descontos da folha somados no período.</p>
+            <div class="compbar">
+              <div v-if="periodCard > 0" class="seg card" :style="{ flexGrow: periodCard }"><span v-if="pctExp(periodCard) > 10">Cartão {{ pctExp(periodCard).toFixed(1) }}%</span></div>
+              <div v-if="periodFixed > 0" class="seg fix" :style="{ flexGrow: periodFixed }"><span v-if="pctExp(periodFixed) > 10">Fixos {{ pctExp(periodFixed).toFixed(1) }}%</span></div>
+              <div v-if="periodVariable > 0" class="seg avul" :style="{ flexGrow: periodVariable }"><span v-if="pctExp(periodVariable) > 10">Avulsos {{ pctExp(periodVariable).toFixed(1) }}%</span></div>
+              <div v-if="periodPayroll > 0" class="seg ded" :style="{ flexGrow: periodPayroll }"><span v-if="pctExp(periodPayroll) > 10">Descontos {{ pctExp(periodPayroll).toFixed(1) }}%</span></div>
+            </div>
+            <div class="legend">
+              <span v-if="periodCard > 0"><i class="dot card"></i> Cartão — {{ brl(periodCard) }}</span>
+              <span v-if="periodFixed > 0"><i class="dot fix"></i> Fixos — {{ brl(periodFixed) }}</span>
+              <span v-if="periodVariable > 0"><i class="dot avul"></i> Avulsos — {{ brl(periodVariable) }}</span>
+              <span v-if="periodPayroll > 0"><i class="dot ded"></i> Descontos — {{ brl(periodPayroll) }}</span>
+            </div>
+          </div>
+
+          <div>
+            <h3>Receita × despesa, mês a mês</h3>
+            <p class="cap">Linha do tempo do período filtrado.</p>
+            <div class="chartwrap">
+              <svg :viewBox="`0 0 ${svgChart.W} ${svgChart.H}`" role="img" aria-label="Receita e despesa por mês">
+                <line v-for="(g, i) in svgChart.grid" :key="'g' + i" class="gl" x1="44" :y1="g.y" x2="664" :y2="g.y" />
+                <text v-for="(g, i) in svgChart.grid" :key="'gt' + i" class="gt" x="38" :y="g.y + 3" text-anchor="end">{{ g.label }}</text>
+                <polyline fill="none" stroke="#0d9488" stroke-width="2.5" stroke-linejoin="round" :points="svgChart.incPts" />
+                <polyline fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linejoin="round" :points="svgChart.expPts" />
+                <circle v-for="(dt, i) in svgChart.incDots" :key="'i' + i" :cx="dt.cx" :cy="dt.cy" r="3.5" fill="#0d9488" />
+                <circle v-for="(dt, i) in svgChart.expDots" :key="'e' + i" :cx="dt.cx" :cy="dt.cy" r="3.5" fill="#3b82f6" />
+                <text v-for="(l, i) in svgChart.labels" :key="'l' + i" class="ml" :x="l.x" y="250" text-anchor="middle">{{ l.t }}</text>
+              </svg>
+            </div>
+            <div class="legend">
+              <span><i class="dot" style="background:#0d9488"></i> Receita</span>
+              <span><i class="dot card"></i> Despesa</span>
+            </div>
+          </div>
+
+          <div>
+            <h3>Mês a mês</h3>
+            <div class="tblwrap">
+              <table>
+                <thead><tr><th>Mês</th><th>Cartão</th><th>Fixos</th><th>Avulsos</th><th>Descontos</th><th>Receita</th><th>Saldo</th></tr></thead>
+                <tbody>
+                  <tr v-for="m in viewMonths" :key="m.month">
+                    <td>{{ monthLabel(m.month) }}</td>
+                    <td>{{ brl(m.card) }}</td>
+                    <td>{{ brl(m.fixed) }}</td>
+                    <td>{{ n(m.variable) > 0 ? brl(m.variable) : "—" }}</td>
+                    <td>{{ n(m.payroll) > 0 ? brl(m.payroll) : "—" }}</td>
+                    <td>{{ brl(m.income) }}</td>
+                    <td :class="n(m.balance) >= 0 ? 'ok' : 'over'">{{ n(m.balance) >= 0 ? "" : "− " }}{{ brl(Math.abs(n(m.balance))) }}</td>
+                  </tr>
+                  <tr class="tot">
+                    <td>Total</td><td>{{ brl(periodCard) }}</td><td>{{ brl(periodFixed) }}</td>
+                    <td>{{ periodVariable > 0 ? brl(periodVariable) : "—" }}</td><td>{{ brl(periodPayroll) }}</td>
+                    <td>{{ brl(periodIncome) }}</td>
+                    <td :class="periodBalance >= 0 ? 'ok' : 'over'">{{ periodBalance >= 0 ? "" : "− " }}{{ brl(Math.abs(periodBalance)) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div v-if="hasCeiling">
+            <h3>Teto do cartão</h3>
+            <p class="cap">Do contracheque mais recente (renda − contas fixas mensais).</p>
+            <div class="ceil">
+              <div class="sim">
+                <div class="h">Com renda recorrente</div>
+                <div class="v">{{ brl(data.card_ceiling) }}</div>
+                <div class="f">{{ brl(data.salary_month) }} − fixos {{ brl(data.fixed_month) }}</div>
+              </div>
+              <div class="sim">
+                <div class="h">Só salário permanente</div>
+                <div class="v">{{ brl(data.card_ceiling_salary) }}</div>
+                <div class="f">{{ brl(data.salary_only) }} − fixos {{ brl(data.fixed_month) }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="ranking.length">
+            <h3>Top categorias no período</h3>
+            <p class="cap">Maiores gastos do cartão no filtro.</p>
+            <div class="rank">
+              <div v-for="c in ranking" :key="c.name" class="rk">
+                <span class="n">{{ c.name }}</span>
+                <span class="bar" :style="{ width: pctOf(c.value, rankMax) + '%' }"></span>
+                <b>{{ brl(c.value) }}</b>
+              </div>
+            </div>
+          </div>
+
+          <div class="insight" :class="{ warn: periodBalance < 0 }">
+            <b>Leitura do período:</b>
+            <template v-if="periodBalance < 0"> despesas superaram receitas em {{ brl(Math.abs(periodBalance)) }}.</template>
+            <template v-else> sobra de {{ brl(periodBalance) }} ({{ savingsPct }}% da receita).</template>
+            Cartão médio de {{ brl(periodCard / Math.max(1, activeMonths)) }}/mês; maior mês foi {{ monthLabel(data.biggest_month) }}.
+          </div>
+
+        </div>
+      </div>
+    </ReportOverlay>
   </div>
 </template>
 
@@ -357,6 +525,12 @@ const chartOption = computed(() => {
   background: var(--clr-surface); color: var(--clr-text-primary); cursor: pointer; outline: none;
 }
 .yearfilter select:focus { border-color: var(--clr-accent); }
+.reportbtn {
+  font-family: inherit; font-size: 13px; font-weight: 700; padding: 6px 12px; margin-left: .4rem;
+  border: 1px solid var(--clr-stroke); border-radius: var(--radius-md);
+  background: var(--clr-surface); color: var(--clr-text-primary); cursor: pointer;
+}
+.reportbtn:hover { border-color: var(--clr-accent); color: var(--clr-accent); }
 .eyebrow { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--clr-accent); font-weight: 700; margin: 0 0 6px; }
 h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 6px; }
 .sub { color: var(--clr-text-secondary); font-size: 13px; margin: 0; }
