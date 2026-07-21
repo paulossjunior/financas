@@ -126,6 +126,11 @@ const forecastPoints = computed(() => d.value?.forecast_next ?? []);
 const forecastTotal = computed(() => num(d.value?.forecast_committed_total));
 const forecastLast = computed(() => d.value?.forecast_last_month || "");
 const hasForecast = computed(() => forecastPoints.value.some((p) => num(p.amount) > 0));
+const forecastNextSum = computed(() => forecastPoints.value.reduce((a, p) => a + num(p.amount), 0));
+function fcMonth(ym: string): string {
+  const [y, m] = ym.split("-");
+  return `${MONTHS[parseInt(m, 10) - 1] ?? m}/${y}`;
+}
 
 // ── Drill-down: click a category to list its expenses (card + fixos + avulsos + folha) ──
 const expandedCat = ref<string | null>(null);
@@ -753,6 +758,21 @@ function refLabel(): string {
               <div class="fixrow tot">
                 <span class="fn">Total bônus + extra líq.</span>
                 <b class="ok-text">{{ fmt(bonusLiq) }}</b>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" v-if="hasForecast">
+            <h3>A pagar no cartão — por mês</h3>
+            <p class="cap">Parcelas já comprometidas nos próximos meses (independe do mês filtrado).</p>
+            <div class="fixlist">
+              <div v-for="p in forecastPoints" :key="p.month" class="fixrow">
+                <span class="fn">{{ fcMonth(p.month) }}</span>
+                <b>{{ fmt(num(p.amount)) }}</b>
+              </div>
+              <div class="fixrow tot">
+                <span class="fn">Total a pagar</span>
+                <b>{{ fmt(forecastNextSum) }}</b>
               </div>
             </div>
           </div>
