@@ -40,7 +40,7 @@ function print() {
   inset: 0;
   z-index: 1000;
   overflow-y: auto;
-  background: var(--bg, #eef1f6);
+  background: var(--clr-bg);
   padding: 0 0 60px;
 }
 .report-toolbar {
