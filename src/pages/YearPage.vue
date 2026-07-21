@@ -9,6 +9,7 @@ import { getYearSummary } from "@/services/tauri.service";
 import type { YearSummary } from "@/types/api.types";
 import ReportOverlay from "@/components/report/ReportOverlay.vue";
 import CategoryTreemap from "@/components/dashboard/CategoryTreemap.vue";
+import CardForecastChart from "@/components/dashboard/CardForecastChart.vue";
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent]);
 
@@ -471,6 +472,13 @@ const selChartOption = computed(() => {
             <span class="camt" :class="n(m.card) > ceiling ? 'over' : 'ok'">{{ brl(m.card) }}</span>
           </div>
         </div>
+      </div>
+
+      <!-- Previsão do cartão (parcelamentos) -->
+      <div class="card">
+        <h2>Previsão do cartão <span class="hint inline">o que os parcelamentos já comprometem</span></h2>
+        <p class="hint">Quanto do cartão já está comprometido em cada mês à frente pelas compras parceladas. Passe o mouse para ver as parcelas.</p>
+        <CardForecastChart :points="data.card_forecast" />
       </div>
 
       <div class="row2">
