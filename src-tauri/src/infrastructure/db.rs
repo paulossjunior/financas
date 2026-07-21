@@ -14,6 +14,16 @@ use crate::domain::payslip::{Payslip, PayslipItem};
 use crate::domain::transaction::{InstallmentInfo, Transaction};
 use crate::domain::{AppConfig, CategoryRule};
 
+/// Parse a money value stored as text. The app always writes valid `Decimal`
+/// strings, so a failure means the row was corrupted or hand-edited — log it
+/// loudly instead of silently reading it as 0 (which would hide data loss).
+fn parse_money(field: &str, s: &str) -> Decimal {
+    Decimal::from_str(s).unwrap_or_else(|e| {
+        eprintln!("[financas] valor decimal inválido em {field}: {s:?} ({e}); usando 0");
+        Decimal::ZERO
+    })
+}
+
 /// SQLite-backed persistence for invoices and their transactions.
 /// Config (rules, overrides, manual entries) stays in config.json.
 pub struct Database {
@@ -296,7 +306,7 @@ impl Database {
                 id: Uuid::parse_str(&id).map_err(|e| e.to_string())?,
                 kind: entry_kind_from_str(&kind),
                 description,
-                amount: Decimal::from_str(&amount).unwrap_or_default(),
+                amount: parse_money("manual_entries.amount", &amount),
                 category,
                 month,
                 recurring: recurring != 0,
@@ -437,7 +447,7 @@ impl Database {
                 invoice_id: Uuid::parse_str(&inv).map_err(|e| e.to_string())?,
                 date: NaiveDate::parse_from_str(&date, DATE_FMT).map_err(|e| e.to_string())?,
                 description: desc,
-                amount: Decimal::from_str(&amount).unwrap_or_default(),
+                amount: parse_money("transactions.amount", &amount),
                 category,
                 installment,
                 is_reversal: rev != 0,
@@ -492,7 +502,7 @@ impl Database {
                 ))
             })
             .map_err(|e| e.to_string())?;
-        let dnum = |s: &str| Decimal::from_str(s).unwrap_or_default();
+        let dnum = |s: &str| parse_money("payslips", s);
         let mut out = Vec::new();
         for row in rows {
             let (id, month, gross, real_gross, deductions, net, salary_liq, bonus_liq, ir_base, fgts, source_file, imported_at) =
@@ -528,8 +538,8 @@ impl Database {
             let (kind, class, description, amount, net_share, offsetting) = r.map_err(|e| e.to_string())?;
             items.push(PayslipItem {
                 kind, class, description,
-                amount: Decimal::from_str(&amount).unwrap_or_default(),
-                net_share: Decimal::from_str(&net_share).unwrap_or_default(),
+                amount: parse_money("payslip_items.amount", &amount),
+                net_share: parse_money("payslip_items.net_share", &net_share),
                 offsetting: offsetting != 0,
             });
         }

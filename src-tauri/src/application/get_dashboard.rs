@@ -58,8 +58,10 @@ pub fn get_dashboard(
 /// income − these expenses, so deductions show up as real monthly costs.
 fn payslip_aggs(p: &Payslip) -> Vec<ManualAgg> {
     use crate::domain::payslip::deduction_category;
-    let date = crate::domain::manual_entry::parse_month_start(&p.month)
-        .unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap());
+    let date = crate::domain::manual_entry::parse_month_start(&p.month).unwrap_or_else(|| {
+        eprintln!("[financas] mês de contracheque inválido: {:?}; usando 2000-01", p.month);
+        chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap()
+    });
     let inv = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, format!("payslip:{}", p.month).as_bytes());
 
     let mut out = vec![ManualAgg {
