@@ -120,6 +120,49 @@ const avulsoExpenses = computed(() => avulsoList.value.filter((e) => e.kind === 
 const topCats = computed(() => categories.value.slice(0, 8));
 const treemapItems = computed(() => categories.value.map((c) => ({ name: c.name, value: num(c.net_total) })));
 
+// ── Drill-down: click a category to list its expenses (card + fixos + avulsos + folha) ──
+const expandedCat = ref<string | null>(null);
+function toggleCatDrill(name: string): void { expandedCat.value = expandedCat.value === name ? null : name; }
+const scopeInvoiceIds = computed(() => {
+  const invs = store.monthFilter ? store.invoices.filter((i) => i.month === store.monthFilter) : store.invoices;
+  return new Set(invs.map((i) => i.id));
+});
+// Mirror of backend deduction_category so payroll rows land under the right category.
+function dedCat(desc: string): string {
+  const u = desc.toUpperCase();
+  if (u.includes("IMPOSTO") || u.includes("IRRF") || u.includes("RENDA")) return "Impostos";
+  if (u.includes("GEAP") || u.includes("SAUDE") || u.includes("SAÚDE") || u.includes("PSAUDE") || u.includes("PSAÚDE")) return "Saúde";
+  if (u.includes("FUNPRESP") || u.includes("SEGURIDADE") || u.includes("PSS") || u.includes("PREVID")) return "Previdência";
+  return "Descontos da folha";
+}
+function fmtDay(d: string): string { const p = d.split("-"); return p.length === 3 ? `${p[2]}/${p[1]}` : d; }
+function monthShort(m: string): string { const [y, mo] = m.split("-"); return `${MONTHS[parseInt(mo, 10) - 1] ?? mo}/${y.slice(2)}`; }
+type DrillItem = { date: string; desc: string; amount: number; source: "card" | "fix" | "avul" | "folha"; reversal?: boolean };
+const drillItems = computed<DrillItem[]>(() => {
+  const cat = expandedCat.value;
+  if (!cat) return [];
+  const out: DrillItem[] = [];
+  for (const t of store.allTransactions) {
+    if (t.category !== cat || !scopeInvoiceIds.value.has(t.invoice_id)) continue;
+    out.push({ date: fmtDay(t.date), desc: t.description, amount: num(t.amount) * (t.is_reversal ? -1 : 1), source: "card", reversal: t.is_reversal });
+  }
+  const inScopeMonth = (m: string) => !store.monthFilter || m === store.monthFilter;
+  for (const e of store.manualEntries) {
+    if (e.kind !== "expense" || e.category !== cat) continue;
+    if (e.recurring) out.push({ date: "mensal", desc: e.description, amount: num(e.amount), source: "fix" });
+    else if (inScopeMonth(e.month)) out.push({ date: monthShort(e.month), desc: e.description, amount: num(e.amount), source: "avul" });
+  }
+  for (const p of scopePayslips.value) {
+    for (const it of p.items) {
+      if (it.kind !== "desconto" || it.offsetting || dedCat(it.description) !== cat) continue;
+      out.push({ date: monthShort(p.month), desc: it.description, amount: num(it.amount), source: "folha" });
+    }
+  }
+  return out.sort((a, b) => b.amount - a.amount);
+});
+const drillTotal = computed(() => drillItems.value.reduce((s, i) => s + i.amount, 0));
+const SRC_LABEL: Record<DrillItem["source"], string> = { card: "cartão", fix: "fixo", avul: "avulso", folha: "folha" };
+
 const UTIL_RE = /energ|[aá]gua|luz|saneam/i;
 const AGUA_RE = /[aá]gua|saneam/i;
 const ENERGIA_RE = /energ|luz/i;
@@ -248,6 +291,7 @@ onMounted(async () => {
   await settingsStore.loadConfig();
   await store.loadManualEntries();
   try { payslips.value = await listPayslips(); } catch { /* ignore */ }
+  try { await store.loadAllTransactions(); } catch { /* ignore */ }
   if (store.hasData) await store.loadDashboard();
 });
 
@@ -715,14 +759,26 @@ function refLabel(): string {
 
           <div class="card">
             <h3>Gasto por categoria (casa completa)</h3>
-            <p class="cap">Cartão + fixos. Barras <span class="amber-text">âmbar</span> = categoria com contas fixas.</p>
+            <p class="cap">Cartão + fixos. Barras <span class="amber-text">âmbar</span> = categoria com contas fixas. <b>Clique para ver as despesas.</b></p>
             <div class="bars">
-              <div v-for="c in categories" :key="c.name" class="bar-row">
-                <div class="name" :title="c.name">{{ c.name }}<span v-if="fixoCategories.has(c.name)" class="fx"> ·fixo</span></div>
-                <div class="bar-track" :title="`${c.name}: ${fmt(c.net_total)} — ${c.transaction_count} lanç.`">
-                  <div class="bar-fill" :class="{ amber: fixoCategories.has(c.name) }" :style="{ width: pctOf(num(c.net_total), catMax) + '%' }" />
-                  <span v-if="pctOf(num(c.net_total), catMax) > 34" class="bar-val inside" :style="{ right: `calc(${100 - pctOf(num(c.net_total), catMax)}% + 8px)` }">{{ fmt(c.net_total) }} · {{ c.percentage.toFixed(0) }}%</span>
-                  <span v-else class="bar-val outside" :style="{ left: `calc(${pctOf(num(c.net_total), catMax)}% + 8px)` }">{{ fmt(c.net_total) }}</span>
+              <div v-for="c in categories" :key="c.name" class="cat-item" :class="{ open: expandedCat === c.name }">
+                <div class="bar-row cat-click" @click="toggleCatDrill(c.name)" role="button" tabindex="0" @keyup.enter="toggleCatDrill(c.name)">
+                  <div class="name" :title="c.name"><span class="caret">▶</span>{{ c.name }}<span v-if="fixoCategories.has(c.name)" class="fx"> ·fixo</span></div>
+                  <div class="bar-track" :title="`${c.name}: ${fmt(c.net_total)} — ${c.transaction_count} lanç.`">
+                    <div class="bar-fill" :class="{ amber: fixoCategories.has(c.name) }" :style="{ width: pctOf(num(c.net_total), catMax) + '%' }" />
+                    <span v-if="pctOf(num(c.net_total), catMax) > 34" class="bar-val inside" :style="{ right: `calc(${100 - pctOf(num(c.net_total), catMax)}% + 8px)` }">{{ fmt(c.net_total) }} · {{ c.percentage.toFixed(0) }}%</span>
+                    <span v-else class="bar-val outside" :style="{ left: `calc(${pctOf(num(c.net_total), catMax)}% + 8px)` }">{{ fmt(c.net_total) }}</span>
+                  </div>
+                </div>
+                <div v-if="expandedCat === c.name" class="drill">
+                  <div class="drill-head"><span class="t">{{ c.name }}</span><span class="meta">{{ drillItems.length }} lançamento{{ drillItems.length === 1 ? "" : "s" }}</span></div>
+                  <div v-for="(it, idx) in drillItems" :key="idx" class="drow">
+                    <span class="dt">{{ it.date }}</span>
+                    <span class="ds">{{ it.desc }}<span class="src" :class="it.source">{{ SRC_LABEL[it.source] }}</span><span v-if="it.reversal" class="src rev">estorno</span></span>
+                    <span class="da" :class="{ neg: it.amount < 0 }">{{ fmt(it.amount) }}</span>
+                  </div>
+                  <p v-if="!drillItems.length" class="drill-empty">Sem lançamentos detalhados nesta categoria.</p>
+                  <div v-else class="drow tot"><span class="dt"></span><span class="ds">Total</span><span class="da">{{ fmt(drillTotal) }}</span></div>
                 </div>
               </div>
             </div>
@@ -1068,6 +1124,32 @@ h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .bar-val { position: absolute; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 700; white-space: nowrap; }
 .bar-val.inside { color: #fff; }
 .bar-val.outside { color: var(--ink-2); }
+
+/* Category drill-down */
+.cat-item { border-radius: 8px; }
+.cat-item.open { background: var(--track); padding: 8px; margin: -8px -8px 0; }
+.cat-click { cursor: pointer; border-radius: 6px; }
+.cat-click:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bar-row .name .caret { display: inline-block; font-size: 9px; color: var(--ink-3); margin-right: 5px; transition: transform .15s; }
+.cat-item.open .caret { transform: rotate(90deg); color: var(--accent); }
+.drill { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.drill-head { display: flex; align-items: center; gap: 10px; padding: 9px 13px; background: var(--track); border-bottom: 1px solid var(--line); }
+.drill-head .t { font-weight: 800; font-size: 13px; }
+.drill-head .meta { margin-left: auto; font-size: 11.5px; color: var(--ink-3); }
+.drow { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 8px 13px; border-bottom: 1px solid var(--line-2, var(--line)); font-size: 13px; }
+.drow:last-child { border-bottom: none; }
+.drow .dt { color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
+.drow .ds { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drow .da { font-weight: 700; text-align: right; white-space: nowrap; }
+.drow .da.neg { color: var(--red); }
+.drow.tot { background: var(--track); font-weight: 800; }
+.drow.tot .ds { color: var(--ink); }
+.src { font-size: 9.5px; font-weight: 800; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; margin-left: 7px; }
+.src.card { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.src.fix { background: color-mix(in srgb, var(--amber) 18%, transparent); color: var(--amber); }
+.src.avul { background: color-mix(in srgb, #8b5cf6 20%, transparent); color: #8b5cf6; }
+.src.folha, .src.rev { background: color-mix(in srgb, var(--red) 16%, transparent); color: var(--red); }
+.drill-empty { font-size: 12.5px; color: var(--ink-3); padding: 10px 13px; margin: 0; }
 
 /* Weekday columns */
 .dow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; align-items: end; height: 200px; margin-top: 4px; }
