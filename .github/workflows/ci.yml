@@ -44,7 +44,8 @@ jobs:
           workspaces: "./src-tauri -> target"
       - name: Clippy
         working-directory: src-tauri
-        run: cargo clippy --all-targets
+        # Lint our crate strictly; vendored path deps (office-crypto) aren't gated.
+        run: cargo clippy -p financas --all-targets -- -D warnings
       - name: Tests
         working-directory: src-tauri
         run: cargo test

@@ -633,7 +633,7 @@ mod tests {
     fn save_and_load_roundtrip() {
         let mut db = Database::open_in_memory().unwrap();
         let inv = make_invoice();
-        db.save_all(&[inv.clone()]).unwrap();
+        db.save_all(std::slice::from_ref(&inv)).unwrap();
 
         let loaded = db.load_invoices().unwrap();
         assert_eq!(loaded.len(), 1);

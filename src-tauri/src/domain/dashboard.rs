@@ -381,7 +381,7 @@ mod tests {
     use crate::domain::invoice::YearMonth;
     use crate::domain::manual_entry::ManualEntry;
     use crate::domain::{invoice::Invoice, transaction::Transaction};
-    use chrono::{NaiveDate, NaiveDateTime};
+    use chrono::NaiveDate;
     use rust_decimal_macros::dec;
     use uuid::Uuid;
 
@@ -407,7 +407,7 @@ mod tests {
             YearMonth::new(year, month),
             None,
             txs,
-            NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
+            chrono::DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
         )
     }
 

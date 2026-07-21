@@ -58,7 +58,7 @@ mod tests {
             YearMonth::new(2026, 5),
             None,
             txs,
-            chrono::NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
+            chrono::DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
         )
     }
 

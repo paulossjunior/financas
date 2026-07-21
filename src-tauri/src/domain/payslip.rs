@@ -110,14 +110,6 @@ fn is_bonus(desc: &str) -> bool {
         .iter()
         .any(|k| u.contains(k))
 }
-/// Permanent base salary earnings (stay regardless of any commissioned post).
-fn is_salary(desc: &str) -> bool {
-    let u = desc.to_uppercase();
-    ["VENCIMENTO", "RSC", "AUXILIO", "AUXÍLIO", "A.T.S", "ADIC.TEMPO"]
-        .iter()
-        .any(|k| u.contains(k))
-}
-
 /// Parse the flattened text of a SIGEPE payslip into structured, classified data.
 pub fn parse_payslip_text(text: &str, source_file: &str) -> Result<Payslip, String> {
     let month = parse_month(text).ok_or("Não achei o mês/ano no contracheque.")?;
@@ -225,15 +217,9 @@ fn classify(items: &mut [PayslipItem]) {
             continue;
         }
         it.class = match it.kind.as_str() {
-            "rendimento" => {
-                if is_bonus(&it.description) {
-                    "bonus"
-                } else if is_salary(&it.description) {
-                    "salario"
-                } else {
-                    "salario" // default: treat unknown earnings as base
-                }
-            }
+            // Earnings are a bonus (CD, gratificações…) or, by default, base salary.
+            "rendimento" if is_bonus(&it.description) => "bonus",
+            "rendimento" => "salario",
             _ => "recorrente",
         }
         .to_string();

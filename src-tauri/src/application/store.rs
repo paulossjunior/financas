@@ -66,7 +66,7 @@ impl InvoiceStore {
             .values()
             .flat_map(|inv| inv.transactions.iter().cloned())
             .collect();
-        txs.sort_by(|a, b| b.date.cmp(&a.date));
+        txs.sort_by_key(|t| std::cmp::Reverse(t.date));
         txs
     }
 
@@ -85,6 +85,8 @@ impl InvoiceStore {
 
 pub type SharedStore = Arc<Mutex<InvoiceStore>>;
 
+/// Empty shared store — used by tests.
+#[cfg(test)]
 pub fn new_shared_store() -> SharedStore {
     Arc::new(Mutex::new(InvoiceStore::new()))
 }
@@ -101,9 +103,8 @@ pub fn shared_store_with(invoices: Vec<Invoice>) -> SharedStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{invoice::{Invoice, YearMonth}, transaction::Transaction};
-    use chrono::{NaiveDate, NaiveDateTime};
-    use rust_decimal_macros::dec;
+    use crate::domain::invoice::{Invoice, YearMonth};
+
 
     fn make_invoice(filename: &str) -> Invoice {
         Invoice::new(
@@ -111,7 +112,7 @@ mod tests {
             YearMonth::new(2026, 6),
             None,
             vec![],
-            NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
+            chrono::DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
         )
     }
 
