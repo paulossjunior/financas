@@ -56,18 +56,7 @@ const scopePayslips = computed(() =>
 const hasPayslip = computed(() => scopePayslips.value.length > 0);
 const salaryNet = computed(() => scopePayslips.value.reduce((a, p) => a + num(p.net), 0) / divisor.value);
 const salaryDed = computed(() => scopePayslips.value.reduce((a, p) => a + num(p.deductions), 0) / divisor.value);
-// Payroll deductions as detail rows (aggregated by description across scope payslips).
-const deductionRows = computed(() => {
-  const m = new Map<string, number>();
-  for (const p of scopePayslips.value) {
-    for (const it of p.items) {
-      if (it.kind === "desconto" && !it.offsetting) {
-        m.set(it.description, (m.get(it.description) ?? 0) + num(it.amount));
-      }
-    }
-  }
-  return [...m.entries()].map(([description, amount]) => ({ description, amount: amount / divisor.value }));
-});
+const payrollDed = computed(() => num(d.value?.total_payroll_deductions) / divisor.value);
 
 const UTIL_RE = /energ|[aá]gua|luz|saneam/i;
 const AGUA_RE = /[aá]gua|saneam/i;
@@ -300,9 +289,6 @@ function refLabel(): string {
   const [y, mf] = p.from.split("-");
   return `${MONTHS[parseInt(mf) - 1].toLowerCase()}/${y}`;
 }
-const fixosList = computed(() =>
-  [...new Set(expenseEntries.value.map((e) => e.description.toLowerCase()))].join(", ")
-);
 </script>
 
 <template>
@@ -312,7 +298,7 @@ const fixosList = computed(() =>
       <div class="top-row">
         <div>
           <p class="eyebrow">Análise de despesas domésticas · Casa + Cartão BTG</p>
-          <h1>Custo total da casa<template v-if="titleSuffix()"> {{ titleSuffix() }}</template></h1>
+          <h1>Custo total da casa{{ titleSuffix() ? " " + titleSuffix() : "" }}</h1>
         </div>
         <div class="top-actions">
           <select
@@ -335,7 +321,7 @@ const fixosList = computed(() =>
       </div>
       <p v-if="d" class="sub">
         Cartão BTG (ref. {{ refLabel() }}) + contas fixas mensais. Total de <b>{{ fmt(expense) }}</b>:
-        <b>{{ fmt(cardNet) }}</b> no cartão e <b>{{ fmt0(fixo) }}</b> em fixos<template v-if="fixosList"> ({{ fixosList }})</template>.
+        <b>{{ fmt(cardNet) }}</b> no cartão, <b>{{ fmt0(fixo) }}</b> em fixos<template v-if="payrollDed > 0"> e <b>{{ fmt0(payrollDed) }}</b> em descontos da folha</template>.
         Leitura de analista: peso, o que já está comprometido e onde cortar.
         <template v-if="income > 0"> Receitas <b>{{ fmt(income) }}</b> · saldo <b :class="balancePositive ? 'ok-text' : 'red-text'">{{ fmt(balance) }}</b>.</template>
       </p>
@@ -410,7 +396,7 @@ const fixosList = computed(() =>
           <div class="kpi">
             <p class="lbl">Custo total {{ scopeWord }}</p>
             <div class="val">{{ fmt(expense) }}</div>
-            <div class="foot">cartão {{ fmt0(cardNet) }} + fixos {{ fmt0(fixo) }}</div>
+            <div class="foot">cartão {{ fmt0(cardNet) }} + fixos {{ fmt0(fixo) }}<template v-if="payrollDed > 0"> + descontos {{ fmt0(payrollDed) }}</template></div>
           </div>
           <div class="kpi">
             <p class="lbl">Contas fixas {{ scopeWord }}</p>
@@ -466,18 +452,14 @@ const fixosList = computed(() =>
 
           <div class="card">
             <h3>Contas fixas — detalhe</h3>
-            <p class="cap">Contas fixas + descontos do salário (folha). Água e energia sinalizadas como anomalia.</p>
-            <div v-if="expenseEntries.length || deductionRows.length" class="fixlist">
+            <p class="cap">Contas fixas mensais (sem descontos da folha). Água e energia sinalizadas como anomalia.</p>
+            <div v-if="expenseEntries.length" class="fixlist">
               <div v-for="e in expenseEntries" :key="e.id" class="fixrow">
                 <span class="fn" :class="{ hot: isUtil(e.description) && utilitiesHigh }">
                   {{ e.description }}
                   <span v-if="isUtil(e.description) && utilitiesHigh" class="badge-hot">alto</span>
                 </span>
                 <b :class="{ 'red-text': isUtil(e.description) && utilitiesHigh }">{{ fmt(e.amount) }}</b>
-              </div>
-              <div v-for="(dr, i) in deductionRows" :key="'ded'+i" class="fixrow">
-                <span class="fn">{{ dr.description }} <span class="badge-folha">folha</span></span>
-                <b>{{ fmt(dr.amount) }}</b>
               </div>
               <div class="fixrow tot">
                 <span class="fn">Total fixo</span>

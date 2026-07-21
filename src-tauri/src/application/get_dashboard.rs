@@ -69,6 +69,7 @@ fn payslip_aggs(p: &Payslip) -> Vec<ManualAgg> {
         category: "Salário".into(),
         tx: Transaction::new(inv, 0, date, "Salário bruto (contracheque)".into(), p.real_gross, "Salário".into(), None),
         is_salary: true,
+        is_payroll: false,
     }];
     for it in p.items.iter().filter(|i| i.kind == "desconto" && !i.offsetting) {
         let cat = deduction_category(&it.description);
@@ -79,6 +80,7 @@ fn payslip_aggs(p: &Payslip) -> Vec<ManualAgg> {
             category: cat.clone(),
             tx: Transaction::new(inv, 0, date, it.description.clone(), it.amount, cat, None),
             is_salary: false,
+            is_payroll: true,
         });
     }
     out
@@ -110,6 +112,7 @@ fn expand_manual(entries: &[ManualEntry], scope_months: &BTreeSet<String>) -> Ve
                 category: e.category.clone(),
                 tx: e.to_transaction(&m),
                 is_salary: e.is_salary,
+                is_payroll: false,
             });
         }
     }

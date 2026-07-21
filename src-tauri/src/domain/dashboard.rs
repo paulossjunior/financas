@@ -21,6 +21,8 @@ pub struct ManualAgg {
     pub tx: Transaction,
     /// Income only: whether this is salary (used to let a payslip supersede it).
     pub is_salary: bool,
+    /// Expense only: true for payroll deductions (kept out of "contas fixas").
+    pub is_payroll: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -76,8 +78,10 @@ pub struct DashboardData {
     pub net_total: String,
     /// Card net only (total_charged + total_reversals).
     pub total_card_net: String,
-    /// Sum of manual fixed expenses in scope.
+    /// Sum of manual fixed expenses in scope (contas fixas — excludes payroll).
     pub total_manual_expense: String,
+    /// Sum of payroll deductions (folha) in scope.
+    pub total_payroll_deductions: String,
     /// Sum of manual income (crédito) in scope.
     pub total_income: String,
     /// total_income − net_total (positive = sobra, negative = déficit).
@@ -123,9 +127,17 @@ pub fn compute_dashboard(
 
     let total_card_net = total_charged + total_reversals;
 
+    // Manual fixed expenses ("contas fixas") — excludes payroll deductions.
     let total_manual_expense: Decimal = manual
         .iter()
-        .filter(|m| m.kind == EntryKind::Expense)
+        .filter(|m| m.kind == EntryKind::Expense && !m.is_payroll)
+        .map(|m| m.amount)
+        .fold(dec!(0), |acc, a| acc + a);
+
+    // Payroll deductions (folha) — counted in the grand total, but shown apart.
+    let total_payroll_deductions: Decimal = manual
+        .iter()
+        .filter(|m| m.kind == EntryKind::Expense && m.is_payroll)
         .map(|m| m.amount)
         .fold(dec!(0), |acc, a| acc + a);
 
@@ -135,8 +147,8 @@ pub fn compute_dashboard(
         .map(|m| m.amount)
         .fold(dec!(0), |acc, a| acc + a);
 
-    // Expense grand total = card + fixed manual expenses. Categories sum to this.
-    let net_total = total_card_net + total_manual_expense;
+    // Expense grand total = card + fixed manual expenses + payroll deductions.
+    let net_total = total_card_net + total_manual_expense + total_payroll_deductions;
     let balance = total_income - net_total;
 
     // Category aggregation over card charges + synthetic manual-expense transactions.
@@ -178,6 +190,7 @@ pub fn compute_dashboard(
         net_total: net_total.to_string(),
         total_card_net: total_card_net.to_string(),
         total_manual_expense: total_manual_expense.to_string(),
+        total_payroll_deductions: total_payroll_deductions.to_string(),
         total_income: total_income.to_string(),
         balance: balance.to_string(),
         invoice_count: invoices.len() as u32,
@@ -402,6 +415,7 @@ mod tests {
             category: category.to_string(),
             tx: entry.to_transaction(month),
             is_salary: entry.is_salary,
+            is_payroll: false,
         }
     }
 
