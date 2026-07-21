@@ -19,6 +19,8 @@ pub struct ManualAgg {
     pub amount: Decimal,
     pub category: String,
     pub tx: Transaction,
+    /// Income only: whether this is salary (used to let a payslip supersede it).
+    pub is_salary: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -399,6 +401,7 @@ mod tests {
             amount,
             category: category.to_string(),
             tx: entry.to_transaction(month),
+            is_salary: entry.is_salary,
         }
     }
 

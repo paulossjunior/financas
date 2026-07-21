@@ -24,10 +24,12 @@ pub async fn get_dashboard_cmd(
     filter: Option<DashboardFilter>,
     store: State<'_, SharedStore>,
     config: State<'_, Mutex<AppConfig>>,
+    db: State<'_, SharedDb>,
 ) -> Result<DashboardData, String> {
     let manual_entries = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
+    let payslips = db.lock().map_err(|e| e.to_string())?.load_payslips().unwrap_or_default();
     let store_lock = store.lock().map_err(|e| e.to_string())?;
-    get_dashboard(&store_lock, &manual_entries, filter.unwrap_or_default())
+    get_dashboard(&store_lock, &manual_entries, &payslips, filter.unwrap_or_default())
 }
 
 #[tauri::command]
