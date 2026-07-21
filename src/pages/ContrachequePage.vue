@@ -97,8 +97,10 @@ const avgNet = computed(() => hasData.value ? list.value.reduce((a, p) => a + n(
 const latest = computed(() => list.value[0] ?? null); // list is month DESC
 const avgGross = computed(() => hasData.value ? list.value.reduce((a, p) => a + n(p.real_gross), 0) / list.value.length : 0);
 const avgDed = computed(() => hasData.value ? list.value.reduce((a, p) => a + n(p.deductions), 0) / list.value.length : 0);
-const netMax = computed(() => Math.max(1, ...list.value.map((p) => n(p.net))) * 1.12);
 const chartMonths = computed(() => [...list.value].reverse()); // asc for the bars
+// Stacked composition: salary líq + bonus líq + real deductions = real gross (wash excluded).
+const stackMax = computed(() => Math.max(1, ...list.value.map((p) => n(p.real_gross))) * 1.05);
+const realDed = (p: Payslip) => Math.max(0, n(p.real_gross) - n(p.net));
 
 function rend(p: Payslip) { return p.items.filter((i) => i.kind === "rendimento"); }
 function desc(p: Payslip) { return p.items.filter((i) => i.kind === "desconto"); }
@@ -132,10 +134,17 @@ function cdNet(p: Payslip): number {
       </div>
 
       <div class="card">
-        <h2>Líquido por mês</h2>
+        <h2>Composição por mês <span class="legend"><span><i class="sw sal"></i>salário</span><span><i class="sw bon"></i>bônus</span><span><i class="sw ded"></i>descontos</span></span></h2>
+        <p class="hint">Cada barra = bruto real do mês, repartido em salário líq · bônus líq · descontos (FUNPRESP, GEAP, PSS, IR).</p>
         <div class="trend">
           <div class="tcol" v-for="p in chartMonths" :key="p.month">
-            <div class="tbar" :style="{ height: (n(p.net) / netMax * 100) + '%' }"><span class="tv">{{ (n(p.net)/1000).toFixed(1) }}k</span></div>
+            <div class="stack" :style="{ height: (n(p.real_gross) / stackMax * 100) + '%' }"
+                 :title="`${ml(p.month)} — salário ${brl(p.salary_liq)} · bônus ${brl(p.bonus_liq)} · descontos ${brl(realDed(p))}`">
+              <div class="seg ded" :style="{ flexGrow: realDed(p) }"></div>
+              <div class="seg bon" :style="{ flexGrow: n(p.bonus_liq) }"></div>
+              <div class="seg sal" :style="{ flexGrow: n(p.salary_liq) }"></div>
+            </div>
+            <span class="tv">{{ (n(p.net)/1000).toFixed(1) }}k líq</span>
             <span class="tmth">{{ ml(p.month).split("/")[0] }}</span>
           </div>
         </div>
@@ -251,6 +260,17 @@ h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 6px;
 .trend { display: flex; gap: 10px; align-items: flex-end; height: 150px; padding-top: 1rem; }
 .tcol { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
 .tbar { width: 66%; max-width: 46px; background: var(--clr-accent); border-radius: 6px 6px 0 0; position: relative; min-height: 2px; }
+.stack { width: 68%; max-width: 48px; display: flex; flex-direction: column; border-radius: 6px 6px 0 0; overflow: hidden; min-height: 3px; }
+.seg { width: 100%; }
+.seg.sal { background: var(--clr-accent); }
+.seg.bon { background: var(--clr-amber); }
+.seg.ded { background: var(--clr-negative); opacity: .8; }
+.legend { display: inline-flex; gap: .8rem; font-size: 11px; font-weight: 600; color: var(--clr-text-secondary); margin-left: .6rem; }
+.legend span { display: inline-flex; align-items: center; gap: .3rem; }
+.sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.sw.sal { background: var(--clr-accent); }
+.sw.bon { background: var(--clr-amber); }
+.sw.ded { background: var(--clr-negative); }
 .tv { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 10.5px; font-weight: 700; white-space: nowrap; color: var(--clr-text-secondary); }
 .tmth { font-size: 11px; color: var(--clr-text-muted); }
 
