@@ -72,8 +72,13 @@ const deductionRows = computed(() => {
     .map(([description, amount]) => ({ description, amount: amount / divisor.value }))
     .sort((a, b) => b.amount - a.amount);
 });
+// Extra (non-salary) manual income in scope — e.g. bolsa. = total income − payslip gross.
+const payslipGross = computed(() => scopePayslips.value.reduce((a, p) => a + num(p.real_gross), 0) / divisor.value);
+const bolsaIncome = computed(() => Math.max(0, income.value - payslipGross.value));
 // Bonus / gratificações (CD, férias…) — líquido attributable to each, from the payslip.
-const bonusLiq = computed(() => scopePayslips.value.reduce((a, p) => a + num(p.bonus_liq), 0) / divisor.value);
+const bonusPayslip = computed(() => scopePayslips.value.reduce((a, p) => a + num(p.bonus_liq), 0) / divisor.value);
+// Total bonus/extra income = payslip bonuses + extra manual income (bolsa).
+const bonusLiq = computed(() => bonusPayslip.value + bolsaIncome.value);
 const bonusRows = computed(() => {
   const m = new Map<string, number>();
   for (const p of scopePayslips.value) {
@@ -424,9 +429,9 @@ function refLabel(): string {
             <div class="foot">FUNPRESP, GEAP, PSS, IR</div>
           </div>
           <div v-if="bonusLiq > 0" class="kpi">
-            <p class="lbl">Bônus líquido</p>
+            <p class="lbl">Bônus + renda extra</p>
             <div class="val ok-text">{{ fmt(bonusLiq) }}</div>
-            <div class="foot">CD, gratificações, férias</div>
+            <div class="foot">CD, gratificações, bolsa, rendimentos</div>
           </div>
           <div class="kpi">
             <p class="lbl">Custo total {{ scopeWord }}</p>
@@ -523,16 +528,20 @@ function refLabel(): string {
             </div>
           </div>
 
-          <div class="card" v-if="bonusRows.length">
-            <h3>Bônus &amp; gratificações — detalhe</h3>
-            <p class="cap">Ganhos não-permanentes (líquido): cargo de direção, gratificações, férias.</p>
+          <div class="card" v-if="bonusRows.length || bolsaIncome > 0">
+            <h3>Bônus &amp; renda extra — detalhe</h3>
+            <p class="cap">Ganhos não-permanentes (líquido): cargo de direção, gratificações, férias, bolsa e rendimentos.</p>
             <div class="fixlist">
               <div v-for="(br, i) in bonusRows" :key="i" class="fixrow">
                 <span class="fn">{{ br.description }}</span>
                 <b class="ok-text">{{ fmt(br.amount) }}</b>
               </div>
+              <div v-if="bolsaIncome > 0" class="fixrow">
+                <span class="fn">Bolsa / rendimentos</span>
+                <b class="ok-text">{{ fmt(bolsaIncome) }}</b>
+              </div>
               <div class="fixrow tot">
-                <span class="fn">Total bônus líq.</span>
+                <span class="fn">Total bônus + extra líq.</span>
                 <b class="ok-text">{{ fmt(bonusLiq) }}</b>
               </div>
             </div>
