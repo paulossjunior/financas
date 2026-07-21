@@ -138,9 +138,14 @@ function dedCat(desc: string): string {
 function fmtDay(d: string): string { const p = d.split("-"); return p.length === 3 ? `${p[2]}/${p[1]}` : d; }
 function monthShort(m: string): string { const [y, mo] = m.split("-"); return `${MONTHS[parseInt(mo, 10) - 1] ?? mo}/${y.slice(2)}`; }
 type DrillItem = { date: string; desc: string; amount: number; source: "card" | "fix" | "avul" | "folha"; reversal?: boolean };
+// The drill-down lists real per-occurrence amounts, which only line up with the
+// category bar when a single month is in scope (divisor = 1, recurring bills count
+// once). In "Todos os meses"/média the bar is an aggregate/average, so we gate the
+// list to a selected month and show a hint otherwise.
+const drillAvailable = computed(() => !!store.monthFilter);
 const drillItems = computed<DrillItem[]>(() => {
   const cat = expandedCat.value;
-  if (!cat) return [];
+  if (!cat || !drillAvailable.value) return [];
   const out: DrillItem[] = [];
   for (const t of store.allTransactions) {
     if (t.category !== cat || !scopeInvoiceIds.value.has(t.invoice_id)) continue;
@@ -771,14 +776,19 @@ function refLabel(): string {
                   </div>
                 </div>
                 <div v-if="expandedCat === c.name" class="drill">
-                  <div class="drill-head"><span class="t">{{ c.name }}</span><span class="meta">{{ drillItems.length }} lançamento{{ drillItems.length === 1 ? "" : "s" }}</span></div>
-                  <div v-for="(it, idx) in drillItems" :key="idx" class="drow">
-                    <span class="dt">{{ it.date }}</span>
-                    <span class="ds">{{ it.desc }}<span class="src" :class="it.source">{{ SRC_LABEL[it.source] }}</span><span v-if="it.reversal" class="src rev">estorno</span></span>
-                    <span class="da" :class="{ neg: it.amount < 0 }">{{ fmt(it.amount) }}</span>
-                  </div>
-                  <p v-if="!drillItems.length" class="drill-empty">Sem lançamentos detalhados nesta categoria.</p>
-                  <div v-else class="drow tot"><span class="dt"></span><span class="ds">Total</span><span class="da">{{ fmt(drillTotal) }}</span></div>
+                  <template v-if="!drillAvailable">
+                    <p class="drill-empty">Selecione um mês no filtro acima para ver os lançamentos desta categoria.</p>
+                  </template>
+                  <template v-else>
+                    <div class="drill-head"><span class="t">{{ c.name }}</span><span class="meta">{{ drillItems.length }} lançamento{{ drillItems.length === 1 ? "" : "s" }}</span></div>
+                    <div v-for="(it, idx) in drillItems" :key="`${it.source}-${it.date}-${it.desc}-${it.amount}-${idx}`" class="drow">
+                      <span class="dt">{{ it.date }}</span>
+                      <span class="ds">{{ it.desc }}<span class="src" :class="it.source">{{ SRC_LABEL[it.source] }}</span><span v-if="it.reversal" class="src rev">estorno</span></span>
+                      <span class="da" :class="{ neg: it.amount < 0 }">{{ fmt(it.amount) }}</span>
+                    </div>
+                    <p v-if="!drillItems.length" class="drill-empty">Sem lançamentos detalhados nesta categoria.</p>
+                    <div v-else class="drow tot"><span class="dt"></span><span class="ds">Total</span><span class="da">{{ fmt(drillTotal) }}</span></div>
+                  </template>
                 </div>
               </div>
             </div>

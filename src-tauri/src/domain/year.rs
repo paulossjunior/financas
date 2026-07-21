@@ -170,8 +170,10 @@ pub fn compute_year_summary(
     // categorized monthly expense (net emerges = gross − deductions − other expenses).
     for (m, p) in &payslip_by_month {
         *income_by.entry(m.clone()).or_insert(dec!(0)) += p.real_gross;
-        let date = super::manual_entry::parse_month_start(m)
-            .unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap());
+        let date = super::manual_entry::parse_month_start(m).unwrap_or_else(|| {
+            eprintln!("[financas] mês inválido no resumo anual: {m:?}; usando 2000-01");
+            chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap()
+        });
         let inv = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, format!("payslip:{m}").as_bytes());
         for it in p.items.iter().filter(|i| i.kind == "desconto" && !i.offsetting) {
             *payroll_by.entry(m.clone()).or_insert(dec!(0)) += it.amount;
