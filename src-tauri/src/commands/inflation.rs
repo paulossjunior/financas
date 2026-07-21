@@ -37,6 +37,7 @@ fn build(cache: InflationCache, cats: &[(String, Decimal)]) -> InflationData {
         available: true,
         headline: Some(cache.headline),
         groups: cache.groups,
+        series: cache.series,
         personal_month: personal,
         personal_diff: diff,
         fetched_at: cache.fetched_at,

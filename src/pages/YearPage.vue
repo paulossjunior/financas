@@ -5,8 +5,8 @@ import { use } from "echarts/core";
 import { LineChart } from "echarts/charts";
 import { GridComponent, TooltipComponent, LegendComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
-import { getYearSummary } from "@/services/tauri.service";
-import type { YearSummary } from "@/types/api.types";
+import { getYearSummary, getInflation } from "@/services/tauri.service";
+import type { YearSummary, InflationData } from "@/types/api.types";
 import ReportOverlay from "@/components/report/ReportOverlay.vue";
 import CategoryTreemap from "@/components/dashboard/CategoryTreemap.vue";
 import CardForecastChart from "@/components/dashboard/CardForecastChart.vue";
@@ -15,6 +15,15 @@ import InflationCard from "@/components/dashboard/InflationCard.vue";
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent]);
 
 const data = ref<YearSummary | null>(null);
+const inflation = ref<InflationData | null>(null);
+async function reloadInflation(): Promise<void> {
+  try { inflation.value = await getInflation(); } catch { /* sem cache */ }
+}
+const ipcaByMonth = computed(() => {
+  const m: Record<string, number> = {};
+  for (const p of inflation.value?.series ?? []) m[p.month] = parseFloat(p.value) || 0;
+  return m;
+});
 const loading = ref(true);
 const error = ref<string | null>(null);
 const yearFrom = ref<number | null>(null); // null = sem limite inferior
@@ -60,6 +69,7 @@ onMounted(async () => {
   syncTheme();
   mql.addEventListener("change", syncTheme);
   await load();
+  await reloadInflation();
 });
 onUnmounted(() => mql.removeEventListener("change", syncTheme));
 
@@ -128,44 +138,66 @@ const chartOption = computed(() => {
   const split = isDark.value ? "rgba(255,255,255,.08)" : "rgba(16,32,27,.08)";
   const tipBg = isDark.value ? "#14201d" : "#ffffff";
   const tipInk = isDark.value ? "#e8f0ed" : "#10201b";
+  const amber = isDark.value ? "#e0a458" : "#b45309";
   const labels = ms.map((m) => monthLabel(m.month));
+  const ipca = ms.map((m) => (m.month in ipcaByMonth.value ? ipcaByMonth.value[m.month] : null));
+  const hasIpca = ipca.some((v) => v !== null);
+  const kfmt = (v: number) => (v >= 1000 ? v / 1000 + "k" : "" + v);
+  const tooltip = {
+    trigger: "axis",
+    backgroundColor: tipBg,
+    borderColor: split,
+    borderWidth: 1,
+    textStyle: { color: tipInk, fontSize: 12 },
+    axisPointer: { link: [{ xAxisIndex: "all" }] },
+    formatter: (ps: any[]) => {
+      const i = ps[0].dataIndex;
+      const m = ms[i];
+      const bal = n(m.balance);
+      const sign = bal >= 0 ? "+" : "−";
+      let s = `<b>${monthLabel(m.month)}</b><br/>Receita: ${brlF(m.income)}<br/>Despesa: ${brlF(m.expense)}<br/>`
+        + `<span style="color:${axis}">Saldo: ${sign}${brlF(Math.abs(bal))}</span>`;
+      if (hasIpca && ipca[i] !== null) {
+        s += `<br/><span style="color:${amber}">IPCA: ${ipca[i]!.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</span>`;
+      }
+      return s;
+    },
+  };
+  const receita = { name: "Receita", type: "line", data: ms.map((m) => n(m.income)), lineStyle: { width: 2.5 }, symbol: "circle", symbolSize: 6 };
+  const despesa = { name: "Despesa", type: "line", data: ms.map((m) => n(m.expense)), lineStyle: { width: 2.5 }, symbol: "circle", symbolSize: 6, areaStyle: { color: coral, opacity: isDark.value ? 0.12 : 0.1 } };
+
+  if (!hasIpca) {
+    return {
+      color: [teal, coral],
+      tooltip,
+      legend: { data: ["Receita", "Despesa"], top: 0, textStyle: { color: axis, fontSize: 12 }, itemWidth: 16, itemHeight: 3 },
+      grid: { left: 58, right: 18, top: 34, bottom: 28 },
+      xAxis: { type: "category", data: labels, axisLabel: { color: axis, fontSize: 11 }, axisLine: { lineStyle: { color: split } }, axisTick: { show: false } },
+      yAxis: { type: "value", axisLabel: { color: axis, fontSize: 11, formatter: kfmt }, splitLine: { lineStyle: { color: split } } },
+      series: [receita, despesa],
+    };
+  }
+  // Two stacked panels sharing the month axis: R$ on top, IPCA % below (no dual-axis on one plot).
   return {
-    color: [teal, coral],
-    tooltip: {
-      trigger: "axis",
-      backgroundColor: tipBg,
-      borderColor: split,
-      borderWidth: 1,
-      textStyle: { color: tipInk, fontSize: 12 },
-      formatter: (ps: any[]) => {
-        const i = ps[0].dataIndex;
-        const m = ms[i];
-        const bal = n(m.balance);
-        const sign = bal >= 0 ? "+" : "−";
-        return `<b>${monthLabel(m.month)}</b><br/>`
-          + `Receita: ${brlF(m.income)}<br/>`
-          + `Despesa: ${brlF(m.expense)}<br/>`
-          + `<span style="color:${axis}">Saldo: ${sign}${brlF(Math.abs(bal))}</span>`;
-      },
-    },
-    legend: { data: ["Receita", "Despesa"], top: 0, textStyle: { color: axis, fontSize: 12 }, itemWidth: 16, itemHeight: 3 },
-    grid: { left: 58, right: 18, top: 34, bottom: 28 },
-    xAxis: {
-      type: "category",
-      data: labels,
-      axisLabel: { color: axis, fontSize: 11 },
-      axisLine: { lineStyle: { color: split } },
-      axisTick: { show: false },
-    },
-    yAxis: {
-      type: "value",
-      axisLabel: { color: axis, fontSize: 11, formatter: (v: number) => (v >= 1000 ? v / 1000 + "k" : "" + v) },
-      splitLine: { lineStyle: { color: split } },
-    },
+    color: [teal, coral, amber],
+    tooltip,
+    legend: { data: ["Receita", "Despesa", "IPCA %"], top: 0, textStyle: { color: axis, fontSize: 12 }, itemWidth: 16, itemHeight: 3 },
+    grid: [
+      { left: 58, right: 18, top: 34, height: "52%" },
+      { left: 58, right: 18, top: "74%", height: "16%" },
+    ],
+    xAxis: [
+      { type: "category", data: labels, gridIndex: 0, axisLabel: { show: false }, axisLine: { lineStyle: { color: split } }, axisTick: { show: false } },
+      { type: "category", data: labels, gridIndex: 1, axisLabel: { color: axis, fontSize: 11 }, axisLine: { lineStyle: { color: split } }, axisTick: { show: false } },
+    ],
+    yAxis: [
+      { type: "value", gridIndex: 0, axisLabel: { color: axis, fontSize: 11, formatter: kfmt }, splitLine: { lineStyle: { color: split } } },
+      { type: "value", gridIndex: 1, axisLabel: { color: axis, fontSize: 10, formatter: (v: number) => v + "%" }, splitLine: { show: false } },
+    ],
     series: [
-      { name: "Receita", type: "line", smooth: false, data: ms.map((m) => n(m.income)), lineStyle: { width: 2.5 }, symbol: "circle", symbolSize: 6 },
-      { name: "Despesa", type: "line", smooth: false, data: ms.map((m) => n(m.expense)), lineStyle: { width: 2.5 }, symbol: "circle", symbolSize: 6,
-        areaStyle: { color: coral, opacity: isDark.value ? 0.12 : 0.10 } },
+      { ...receita, xAxisIndex: 0, yAxisIndex: 0 },
+      { ...despesa, xAxisIndex: 0, yAxisIndex: 0 },
+      { name: "IPCA %", type: "line", xAxisIndex: 1, yAxisIndex: 1, data: ipca, connectNulls: true, lineStyle: { width: 2, color: amber }, itemStyle: { color: amber }, symbol: "circle", symbolSize: 4 },
     ],
   };
 });
@@ -477,7 +509,7 @@ const selChartOption = computed(() => {
 
       <!-- Inflação (IPCA + pessoal) -->
       <div class="card">
-        <InflationCard />
+        <InflationCard @updated="reloadInflation" />
       </div>
 
       <!-- Previsão do cartão (parcelamentos) -->

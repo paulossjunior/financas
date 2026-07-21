@@ -4,6 +4,7 @@ import { getInflation, fetchIpca } from "@/services/tauri.service";
 import type { InflationData } from "@/types/api.types";
 
 withDefaults(defineProps<{ compact?: boolean }>(), { compact: false });
+const emit = defineEmits<{ (e: "updated"): void }>();
 
 const data = ref<InflationData | null>(null);
 const loading = ref(false);
@@ -41,6 +42,7 @@ async function refresh() {
   error.value = null;
   try {
     data.value = await fetchIpca();
+    emit("updated");
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {

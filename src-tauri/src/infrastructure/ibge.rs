@@ -8,12 +8,14 @@ use std::time::Duration;
 use rust_decimal::Decimal;
 use serde_json::Value;
 
-use crate::domain::inflation::{InflationCache, IpcaGroup, IpcaHeadline, IPCA_GROUPS};
+use crate::domain::inflation::{InflationCache, IpcaGroup, IpcaHeadline, IpcaPoint, IPCA_GROUPS};
 
 const HEADLINE_URL: &str =
     "https://servicodados.ibge.gov.br/api/v3/agregados/1737/periodos/-1/variaveis/63|2265|69?localidades=N1[1]";
 const GROUPS_URL: &str =
     "https://servicodados.ibge.gov.br/api/v3/agregados/7060/periodos/-1/variaveis/63?localidades=N1[1]&classificacao=315[all]";
+const SERIES_URL: &str =
+    "https://servicodados.ibge.gov.br/api/v3/agregados/1737/periodos/-13/variaveis/63?localidades=N1[1]";
 
 fn dec(s: &str) -> Decimal {
     Decimal::from_str(s.trim()).unwrap_or(Decimal::ZERO)
@@ -115,6 +117,33 @@ fn parse_groups(json: &Value) -> Vec<IpcaGroup> {
     out
 }
 
+/// Monthly IPCA series (variable 63) for the last periods → time series.
+fn parse_series(json: &Value) -> Vec<IpcaPoint> {
+    let mut out = Vec::new();
+    let Some(serie) = json
+        .as_array()
+        .and_then(|a| a.first())
+        .and_then(|v| v.get("resultados"))
+        .and_then(|v| v.as_array())
+        .and_then(|a| a.first())
+        .and_then(|r| r.get("series"))
+        .and_then(|v| v.as_array())
+        .and_then(|a| a.first())
+        .and_then(|s| s.get("serie"))
+        .and_then(|v| v.as_object())
+    else {
+        return out;
+    };
+    for (period, value) in serie {
+        // sorted keys → chronological
+        out.push(IpcaPoint {
+            month: ref_month(period),
+            value: dec(value.as_str().unwrap_or("0")),
+        });
+    }
+    out
+}
+
 /// Fetch IPCA headline + groups from the IBGE public API. Network only.
 pub async fn fetch_inflation() -> Result<InflationCache, String> {
     let client = reqwest::Client::builder()
@@ -138,14 +167,16 @@ pub async fn fetch_inflation() -> Result<InflationCache, String> {
 
     let headline_json = get(HEADLINE_URL).await?;
     let groups_json = get(GROUPS_URL).await?;
+    let series_json = get(SERIES_URL).await?;
 
     let headline = parse_headline(&headline_json)?;
     let groups = parse_groups(&groups_json);
     if groups.is_empty() {
         return Err("IBGE: não consegui ler os grupos do IPCA".into());
     }
+    let series = parse_series(&series_json);
     let fetched_at = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
-    Ok(InflationCache { headline, groups, fetched_at })
+    Ok(InflationCache { headline, groups, series, fetched_at })
 }
 
 #[cfg(test)]

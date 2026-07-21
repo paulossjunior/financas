@@ -17,6 +17,14 @@ pub struct IpcaGroup {
     pub month_var: Decimal,
 }
 
+/// IPCA monthly variation for one month (time series point).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IpcaPoint {
+    pub month: String, // "YYYY-MM"
+    #[serde(with = "rust_decimal::serde::str")]
+    pub value: Decimal,
+}
+
 /// Official IPCA headline for the latest period.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IpcaHeadline {
@@ -34,6 +42,8 @@ pub struct IpcaHeadline {
 pub struct InflationCache {
     pub headline: IpcaHeadline,
     pub groups: Vec<IpcaGroup>,
+    #[serde(default)]
+    pub series: Vec<IpcaPoint>,
     pub fetched_at: String,
 }
 
@@ -43,6 +53,7 @@ pub struct InflationData {
     pub available: bool,
     pub headline: Option<IpcaHeadline>,
     pub groups: Vec<IpcaGroup>,
+    pub series: Vec<IpcaPoint>,
     #[serde(with = "rust_decimal::serde::str")]
     pub personal_month: Decimal,
     #[serde(with = "rust_decimal::serde::str")]
@@ -56,6 +67,7 @@ impl InflationData {
             available: false,
             headline: None,
             groups: Vec::new(),
+            series: Vec::new(),
             personal_month: dec!(0),
             personal_diff: dec!(0),
             fetched_at: String::new(),
