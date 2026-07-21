@@ -71,6 +71,21 @@ const deductionRows = computed(() => {
     .map(([description, amount]) => ({ description, amount: amount / divisor.value }))
     .sort((a, b) => b.amount - a.amount);
 });
+// Bonus / gratificações (CD, férias…) — líquido attributable to each, from the payslip.
+const bonusLiq = computed(() => scopePayslips.value.reduce((a, p) => a + num(p.bonus_liq), 0) / divisor.value);
+const bonusRows = computed(() => {
+  const m = new Map<string, number>();
+  for (const p of scopePayslips.value) {
+    for (const it of p.items) {
+      if (it.kind === "rendimento" && it.class === "bonus" && !it.offsetting) {
+        m.set(it.description, (m.get(it.description) ?? 0) + num(it.net_share));
+      }
+    }
+  }
+  return [...m.entries()]
+    .map(([description, amount]) => ({ description, amount: amount / divisor.value }))
+    .sort((a, b) => b.amount - a.amount);
+});
 
 const UTIL_RE = /energ|[aá]gua|luz|saneam/i;
 const AGUA_RE = /[aá]gua|saneam/i;
@@ -407,6 +422,11 @@ function refLabel(): string {
             <div class="val">{{ fmt(salaryDed) }}</div>
             <div class="foot">FUNPRESP, GEAP, PSS, IR</div>
           </div>
+          <div v-if="bonusLiq > 0" class="kpi">
+            <p class="lbl">Bônus líquido</p>
+            <div class="val ok-text">{{ fmt(bonusLiq) }}</div>
+            <div class="foot">CD, gratificações, férias</div>
+          </div>
           <div class="kpi">
             <p class="lbl">Custo total {{ scopeWord }}</p>
             <div class="val">{{ fmt(expense) }}</div>
@@ -494,6 +514,21 @@ function refLabel(): string {
               <div class="fixrow tot">
                 <span class="fn">Total descontos</span>
                 <b>{{ fmt(payrollDed) }}</b>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" v-if="bonusRows.length">
+            <h3>Bônus &amp; gratificações — detalhe</h3>
+            <p class="cap">Ganhos não-permanentes (líquido): cargo de direção, gratificações, férias.</p>
+            <div class="fixlist">
+              <div v-for="(br, i) in bonusRows" :key="i" class="fixrow">
+                <span class="fn">{{ br.description }}</span>
+                <b class="ok-text">{{ fmt(br.amount) }}</b>
+              </div>
+              <div class="fixrow tot">
+                <span class="fn">Total bônus líq.</span>
+                <b class="ok-text">{{ fmt(bonusLiq) }}</b>
               </div>
             </div>
           </div>
