@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Manual de uso do Finanças — importar fatura e contracheque, painel do mês e do ano, relatórios em PDF. Tudo local.">
+<title>Manual de uso — Finanças</title>
+<style>
+  :root {
+    --paper:#f5f7f5; --surface:#ffffff; --surface-2:#eef1f0; --ink:#14201d; --ink-2:#48584f;
+    --ink-3:#7c8b83; --line:#dde3e0; --line-soft:#e8ecea;
+    --accent:#0e7c66; --accent-2:#0b6353; --accent-soft:#d3ebe4; --amber:#b45309;
+    --shadow-sm: 0 1px 2px rgba(20,32,29,.06), 0 6px 16px -8px rgba(20,32,29,.14);
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --paper:#0c1311; --surface:#131e1b; --surface-2:#182521; --ink:#e9efec; --ink-2:#9fb0a9;
+      --ink-3:#6c7d76; --line:#243430; --line-soft:#1c2926; --accent:#34c9a6; --accent-2:#46d9b6;
+      --accent-soft:#0f342c; --amber:#e0a458; --shadow-sm:0 1px 2px rgba(0,0,0,.5), 0 10px 24px -12px rgba(0,0,0,.5); }
+  }
+  :root[data-theme="light"]{ --paper:#f5f7f5;--surface:#fff;--surface-2:#eef1f0;--ink:#14201d;--ink-2:#48584f;--ink-3:#7c8b83;--line:#dde3e0;--line-soft:#e8ecea;--accent:#0e7c66;--accent-2:#0b6353;--accent-soft:#d3ebe4;--amber:#b45309; }
+  :root[data-theme="dark"]{ --paper:#0c1311;--surface:#131e1b;--surface-2:#182521;--ink:#e9efec;--ink-2:#9fb0a9;--ink-3:#6c7d76;--line:#243430;--line-soft:#1c2926;--accent:#34c9a6;--accent-2:#46d9b6;--accent-soft:#0f342c;--amber:#e0a458; }
+
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  html, body { max-width:100%; overflow-x:hidden; }
+  body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans); line-height:1.62;
+    -webkit-font-smoothing:antialiased; }
+  a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+  .wrap { max-width:1080px; margin:0 auto; padding:0 22px; }
+
+  header.nav { position:sticky; top:0; z-index:50; background:color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter:saturate(1.4) blur(10px); border-bottom:1px solid var(--line-soft); }
+  .nav .row { display:flex; align-items:center; gap:16px; height:58px; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:800; letter-spacing:-.02em; font-size:16px; color:var(--ink); }
+  .brand .mark { width:28px; height:28px; border-radius:8px; background:var(--accent); color:#fff; display:grid; place-items:center; font-weight:800; }
+  .nav .sp { margin-left:auto; }
+  .btn { display:inline-flex; align-items:center; gap:7px; font-weight:700; font-size:14px; padding:8px 15px; border-radius:9px;
+    border:1px solid transparent; color:#fff; background:var(--accent); }
+  .btn:hover { background:var(--accent-2); text-decoration:none; }
+  .btn.ghost { background:var(--surface); color:var(--ink); border-color:var(--line); }
+  .btn.ghost:hover { border-color:var(--accent); color:var(--accent); }
+
+  .hero { padding:44px 0 8px; }
+  .eyebrow { font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); font-weight:600; }
+  h1 { font-size:clamp(30px,5vw,44px); letter-spacing:-.03em; font-weight:850; margin:10px 0 6px; }
+  .sub { color:var(--ink-2); font-size:17px; max-width:60ch; margin:0; }
+
+  .layout { display:grid; grid-template-columns:230px 1fr; gap:40px; align-items:start; padding:28px 0 70px; }
+  @media (max-width:820px){ .layout { grid-template-columns:1fr; gap:8px; } }
+  /* TOC */
+  .toc { position:sticky; top:76px; align-self:start; font-size:13.5px; }
+  .toc .t { font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin:0 0 10px; }
+  .toc ol { list-style:none; margin:0; padding:0; display:grid; gap:2px; counter-reset:t; }
+  .toc a { display:block; color:var(--ink-2); padding:5px 8px; border-radius:7px; counter-increment:t; }
+  .toc a::before { content:counter(t,decimal-leading-zero) "  "; font-family:var(--mono); font-size:11px; color:var(--accent); }
+  .toc a:hover { background:var(--surface-2); color:var(--ink); text-decoration:none; }
+  @media (max-width:820px){
+    .toc { position:static; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:6px; }
+  }
+
+  article { min-width:0; }
+  article section { padding:8px 0 26px; border-bottom:1px solid var(--line-soft); scroll-margin-top:74px; }
+  article section:last-child { border-bottom:none; }
+  h2 { font-size:clamp(21px,3vw,27px); letter-spacing:-.02em; font-weight:800; margin:18px 0 8px; display:flex; align-items:baseline; gap:10px; }
+  h2 .num { font-family:var(--mono); font-size:14px; color:var(--accent); font-weight:700; }
+  h3 { font-size:16px; margin:20px 0 6px; }
+  p { margin:10px 0; color:var(--ink); }
+  .muted { color:var(--ink-2); }
+  ol.steps { margin:12px 0; padding-left:0; list-style:none; counter-reset:s; display:grid; gap:10px; }
+  ol.steps li { position:relative; padding-left:38px; color:var(--ink); }
+  ol.steps li::before { counter-increment:s; content:counter(s); position:absolute; left:0; top:-1px; width:26px; height:26px;
+    border-radius:8px; background:var(--accent-soft); color:var(--accent); font-weight:800; font-size:13px; display:grid; place-items:center; }
+  ul.plain { margin:10px 0; padding-left:20px; } ul.plain li { margin:6px 0; }
+  b, strong { font-weight:700; }
+  code, kbd { font-family:var(--mono); font-size:.88em; background:var(--surface-2); padding:1px 6px; border-radius:6px; }
+  .callout { display:flex; gap:11px; background:var(--accent-soft); border-radius:12px; padding:13px 15px; margin:14px 0; font-size:14.5px; color:var(--ink); }
+  .callout .i { color:var(--accent); font-weight:800; flex:none; }
+  .callout.warn { background:color-mix(in srgb, var(--amber) 14%, transparent); }
+  .callout.warn .i { color:var(--amber); }
+  .faq dt { font-weight:700; margin-top:14px; }
+  .faq dd { margin:4px 0 0; color:var(--ink-2); }
+
+  footer { border-top:1px solid var(--line-soft); padding:26px 0; color:var(--ink-3); font-size:13px; }
+  .foot { display:flex; gap:14px; justify-content:space-between; flex-wrap:wrap; }
+  footer a { color:var(--ink-2); }
+  @media (max-width:560px){ .wrap{ padding:0 16px; } .hero{ padding:30px 0 4px; } h1{ font-size:29px; } }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap row">
+    <a class="brand" href="index.html"><span class="mark">₣</span> Finanças</a>
+    <span class="sp"></span>
+    <a class="btn ghost" href="index.html">← Início</a>
+    <a class="btn" href="https://github.com/paulossjunior/financas/releases/latest">Baixar</a>
+  </div>
+</header>
+
+<div class="wrap hero">
+  <span class="eyebrow">Manual de uso</span>
+  <h1>Como usar o Finanças</h1>
+  <p class="sub">Um guia rápido pra tirar o máximo do app. Você não precisa configurar nada antes — abra, importe um arquivo e o painel se monta sozinho. Tudo acontece no seu computador.</p>
+</div>
+
+<div class="wrap layout">
+  <!-- TOC -->
+  <nav class="toc" aria-label="Sumário">
+    <p class="t">Sumário</p>
+    <ol>
+      <li><a href="#p1">Primeiros passos</a></li>
+      <li><a href="#p2">Importar a fatura</a></li>
+      <li><a href="#p3">Importar o contracheque</a></li>
+      <li><a href="#p4">O painel do mês</a></li>
+      <li><a href="#p5">Fixos e renda</a></li>
+      <li><a href="#p6">Lançamentos avulsos</a></li>
+      <li><a href="#p7">Categorias</a></li>
+      <li><a href="#p8">Ver o ano</a></li>
+      <li><a href="#p9">Teto do cartão</a></li>
+      <li><a href="#p10">Relatório em PDF</a></li>
+      <li><a href="#p11">Dados e backup</a></li>
+      <li><a href="#p12">Dúvidas comuns</a></li>
+    </ol>
+  </nav>
+
+  <article>
+    <section id="p1">
+      <h2><span class="num">01</span> Primeiros passos</h2>
+      <ol class="steps">
+        <li>Baixe o instalador na página de <a href="https://github.com/paulossjunior/financas/releases/latest">Releases</a> e instale.</li>
+        <li><b>macOS</b>: se aparecer "desenvolvedor não identificado", clique com o botão direito no app → <b>Abrir</b> → <b>Abrir</b>. Só na primeira vez. <br><b>Windows</b>: no SmartScreen, <b>Mais informações</b> → <b>Executar assim mesmo</b>.</li>
+        <li>Abra o app — sem cadastro, sem login. Você cai na tela <b>Mês</b>, vazia até você importar algo.</li>
+      </ol>
+    </section>
+
+    <section id="p2">
+      <h2><span class="num">02</span> Importar a fatura do cartão</h2>
+      <p>O app lê a fatura do <b>cartão BTG</b> em <code>.xlsx</code> (o arquivo que o banco disponibiliza).</p>
+      <ol class="steps">
+        <li>Clique em <b>Importar</b> no topo da tela.</li>
+        <li>Escolha o arquivo <code>.xlsx</code> da fatura.</li>
+        <li>Se a fatura estiver <b>protegida por senha</b>, informe a senha uma vez — ela fica no cofre do sistema (Keychain / Gerenciador de Credenciais), nunca em texto.</li>
+      </ol>
+      <p>As compras entram já <b>categorizadas</b>, com parcelas e estornos reconhecidos.</p>
+      <div class="callout"><span class="i">↺</span><div>Importou o mês errado ou quer atualizar? Importe de novo — o app <b>substitui</b> a fatura daquele mês em vez de duplicar.</div></div>
+    </section>
+
+    <section id="p3">
+      <h2><span class="num">03</span> Importar o contracheque</h2>
+      <p>O app lê o <b>contracheque do SouGov.br</b> em PDF e separa salário, bônus e descontos.</p>
+      <ol class="steps">
+        <li>Vá em <b>Contracheque</b>.</li>
+        <li>Selecione um ou vários PDFs de uma vez.</li>
+        <li>Confira a prévia e confirme.</li>
+      </ol>
+      <ul class="plain">
+        <li><b>Salário × bônus</b>: gratificações, férias, 13º e o "Cargo de Direção – CD" (tratado como bônus temporário).</li>
+        <li><b>Descontos</b>: Imposto de Renda → <i>Impostos</i>, GEAP → <i>Saúde</i>, FUNPRESP/PSS → <i>Previdência</i>.</li>
+        <li><b>Adiantamentos que se anulam</b> no mesmo mês não contam duas vezes.</li>
+      </ul>
+      <p class="muted">A partir daí, o líquido do mês alimenta o painel.</p>
+    </section>
+
+    <section id="p4">
+      <h2><span class="num">04</span> O painel do mês</h2>
+      <p>A tela <b>Mês</b> responde: <i>para onde foi o dinheiro e sobrou ou faltou?</i></p>
+      <ul class="plain">
+        <li><b>Indicadores</b>: receita, despesa, saldo, líquido do contracheque, descontos e bônus.</li>
+        <li><b>Composição da despesa</b>: uma barra com cartão · fixos · avulsos · descontos da folha.</li>
+        <li><b>Mapa de gastos (treemap)</b>: cada retângulo é uma categoria; quanto maior, mais você gastou.</li>
+        <li><b>Gasto por categoria</b>: <b>clique numa categoria</b> para ver a lista de despesas dela, com a origem de cada uma.</li>
+      </ul>
+      <div class="callout"><span class="i">✓</span><div>Para ver os lançamentos de uma categoria, selecione <b>um mês</b> no filtro. Em "Todos os meses", a barra é um total agregado.</div></div>
+    </section>
+
+    <section id="p5">
+      <h2><span class="num">05</span> Contas fixas e renda</h2>
+      <p>Em <b>Fixos &amp; Renda</b> você cadastra o que se repete todo mês:</p>
+      <ul class="plain">
+        <li><b>Contas fixas</b> (aluguel, internet, água, energia…) — contam automaticamente em todos os meses.</li>
+        <li><b>Renda extra</b> (bolsa, aluguel recebido…) — o salário vem do contracheque; aqui entra só o extra.</li>
+        <li><b>Despesa esporádica</b> — lance algo que se repete por <i>N meses</i> (ex.: uma terapia de 3 meses) sem recadastrar.</li>
+      </ul>
+    </section>
+
+    <section id="p6">
+      <h2><span class="num">06</span> Lançamentos avulsos</h2>
+      <p>Gastos ou recebimentos <b>pontuais</b> (um freelance, uma conta que apareceu) — não são conta fixa.</p>
+      <ol class="steps">
+        <li>Na tela <b>Mês</b>, clique em <b>+ Lançamento avulso</b>.</li>
+        <li>Escolha débito ou crédito, descrição, valor e categoria.</li>
+        <li>Para editar ou remover, passe o mouse na lista <b>Lançamentos avulsos</b> e use ✎ / ✕.</li>
+      </ol>
+    </section>
+
+    <section id="p7">
+      <h2><span class="num">07</span> Categorias e mapeamento</h2>
+      <p>O app classifica sozinho, mas você manda:</p>
+      <ul class="plain">
+        <li><b>Ajuste rápido</b>: troque a categoria de uma transação — o app lembra da escolha, mesmo se reimportar.</li>
+        <li><b>Regras por palavra-chave</b> (tela <b>Mapeamento</b>): associe um termo a uma categoria (ex.: "Petz" → <i>Cachorros</i>) e vale para todas as transações que combinam.</li>
+        <li>As regras ignoram acento e pegam a raiz da palavra. Seus ajustes manuais têm prioridade.</li>
+      </ul>
+    </section>
+
+    <section id="p8">
+      <h2><span class="num">08</span> Ver o ano inteiro</h2>
+      <p>A tela <b>Ano</b> mostra a foto do período.</p>
+      <ul class="plain">
+        <li><b>Filtro</b>: ano inicial → ano final e, se quiser, um intervalo de meses.</li>
+        <li><b>Matriz categoria × ano</b>: linha = categoria, coluna = ano, a cor indica o tamanho do gasto. <b>Clique numa linha</b> para marcar/desmarcar.</li>
+        <li><b>Evolução por categoria</b>: as marcadas viram um gráfico — uma linha por categoria + uma linha de Total.</li>
+        <li><b>Mapa de gastos</b> e <b>ranking</b> do período.</li>
+      </ul>
+      <p class="muted">Assim você enxerga hábitos: o gasto pequeno e repetido que soma muito no fim do ano.</p>
+    </section>
+
+    <section id="p9">
+      <h2><span class="num">09</span> Teto do cartão</h2>
+      <p>O <b>teto</b> responde: <i>quanto o cartão pode gastar sem furar o orçamento?</i> É a renda menos as contas fixas, em dois cenários:</p>
+      <ul class="plain">
+        <li><b>Renda recorrente</b>: toda a renda que entra todo mês.</li>
+        <li><b>Só salário</b>: apenas o salário permanente (sem bônus/CD, que são temporários).</li>
+      </ul>
+      <p>Se o cartão passar do teto, o app sinaliza — bom para decidir antes da próxima fatura.</p>
+    </section>
+
+    <section id="p10">
+      <h2><span class="num">10</span> Gerar um relatório em PDF</h2>
+      <ol class="steps">
+        <li>Na tela <b>Mês</b> ou <b>Ano</b>, clique em <b>📄 Relatório</b>.</li>
+        <li>Confira o resumo em tela cheia (o do Ano respeita o filtro atual).</li>
+        <li>Clique em <b>Exportar PDF</b> — o relatório abre no navegador; use <kbd>Imprimir → Salvar como PDF</kbd>.</li>
+      </ol>
+    </section>
+
+    <section id="p11">
+      <h2><span class="num">11</span> Seus dados e backup</h2>
+      <ul class="plain">
+        <li>Tudo fica num arquivo local no seu computador. <b>Nada é enviado pra internet.</b></li>
+        <li><b>Backup</b>: copie a pasta de dados do app — no <b>macOS</b>, <code>~/Library/Application Support/com.financas.app/</code>; no <b>Windows</b>, <code>%APPDATA%\com.financas.app\</code>.</li>
+        <li>A senha da fatura fica no cofre do sistema, não nesse arquivo.</li>
+      </ul>
+    </section>
+
+    <section id="p12">
+      <h2><span class="num">12</span> Dúvidas comuns</h2>
+      <dl class="faq">
+        <dt>Preciso de internet?</dt><dd>Não. O app funciona 100% offline.</dd>
+        <dt>Meus dados vão para algum servidor?</dt><dd>Não. Sem contas, sem telemetria, sem sincronização.</dd>
+        <dt>A fatura está cifrada — e agora?</dt><dd>Informe a senha quando o app pedir. Ele guarda com segurança e não pergunta de novo.</dd>
+        <dt>Importei duas vezes o mesmo mês.</dt><dd>Sem problema: o app substitui, não duplica.</dd>
+        <dt>A categoria de uma compra ficou errada.</dt><dd>Troque na hora (fica salvo) ou crie uma regra em Mapeamento.</dd>
+        <dt>O detalhe da categoria não bate com a barra.</dt><dd>Selecione um mês no filtro — o detalhe é por mês; em "Todos os meses" a barra é um agregado.</dd>
+      </dl>
+    </section>
+  </article>
+</div>
+
+<footer>
+  <div class="wrap foot">
+    <a class="brand" href="index.html" style="font-size:14px"><span class="mark" style="width:22px;height:22px;font-size:12px">₣</span> Finanças</a>
+    <span>Local-first · código aberto · <a href="https://github.com/paulossjunior/financas">GitHub</a></span>
+  </div>
+</footer>
+</body>
+</html>
