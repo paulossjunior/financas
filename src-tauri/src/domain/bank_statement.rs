@@ -40,6 +40,47 @@ pub struct ClassifiedEntry {
     pub reason: String, // "" | "fatura" | "salario" | "interno"
 }
 
+/// A persisted, included bank entry (feeds the dashboard as avulso/renda).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BankEntry {
+    pub id: String,
+    pub bank: String,
+    pub account: String,
+    pub date: String,
+    pub month: String,
+    pub description: String,
+    pub category: String,
+    #[serde(with = "rust_decimal::serde::str")]
+    pub amount: Decimal, // signed: negative = debit
+    pub kind: String, // "income" | "expense"
+}
+
+impl BankEntry {
+    pub fn from_classified(c: &ClassifiedEntry, bank: &str, account: &str) -> Self {
+        Self {
+            id: c.id.clone(),
+            bank: bank.to_string(),
+            account: account.to_string(),
+            date: c.date.clone(),
+            month: c.month.clone(),
+            description: c.description.clone(),
+            category: c.category.clone(),
+            amount: c.amount,
+            kind: c.kind.clone(),
+        }
+    }
+
+    /// Convert to a ManualEntry (avulso expense / extra income) so it flows through
+    /// the existing dashboard/year pipeline. Never salary (salary is excluded upstream).
+    pub fn to_manual_entry(&self) -> super::manual_entry::ManualEntry {
+        use super::manual_entry::{EntryKind, ManualEntry};
+        let kind = if self.kind == "income" { EntryKind::Income } else { EntryKind::Expense };
+        let mut m = ManualEntry::new(kind, self.description.clone(), self.amount.abs(), self.category.clone(), self.month.clone(), false);
+        m.is_salary = false;
+        m
+    }
+}
+
 /// Result of parsing a statement file.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ParsedStatement {
@@ -172,8 +213,15 @@ pub fn classify_entry(
 
     let is_card = ntrans.contains("FATURA DO CART") || ndesc.contains("FATURA DO CART");
     let is_salary = (ncat == "SALARIO" || ntrans.contains("SALARIO")) && has_payslip_month;
-    let is_internal = !holder_norm.is_empty()
-        && (ndesc == holder_norm || ndesc.contains(holder_norm) || holder_norm.contains(&ndesc));
+    // Internal transfer = the description carries the account holder's name. The holder
+    // metadata may come with a broken byte (U+FFFD), so match by tokens: every "clean"
+    // holder token (len ≥ 3, no replacement char) must appear in the description.
+    let holder_tokens: Vec<&str> = holder_norm
+        .split_whitespace()
+        .filter(|t| t.chars().count() >= 3 && !t.contains('\u{FFFD}'))
+        .collect();
+    let desc_tokens: std::collections::HashSet<&str> = ndesc.split_whitespace().collect();
+    let is_internal = holder_tokens.len() >= 2 && holder_tokens.iter().all(|t| desc_tokens.contains(t));
 
     let (included, reason) = if is_card {
         (false, "fatura")

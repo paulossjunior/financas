@@ -73,6 +73,38 @@ export interface MonthlySnapshot {
   categories: CategorySnapshot[];
 }
 
+export interface ClassifiedEntry {
+  id: string;
+  date: string;
+  month: string;
+  description: string;
+  btg_category: string;
+  amount: string;
+  kind: "income" | "expense";
+  category: string;
+  included: boolean;
+  reason: string; // "" | "fatura" | "salario" | "interno"
+}
+
+export interface BankEntry {
+  id: string;
+  bank: string;
+  account: string;
+  date: string;
+  month: string;
+  description: string;
+  category: string;
+  amount: string;
+  kind: "income" | "expense";
+}
+
+export interface StatementPreview {
+  holder: string;
+  account: string;
+  included: ClassifiedEntry[];
+  excluded: ClassifiedEntry[];
+}
+
 export interface IpcaGroup {
   name: string;
   month_var: string;
