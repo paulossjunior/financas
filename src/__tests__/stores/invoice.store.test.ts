@@ -108,7 +108,7 @@ describe("invoice.store", () => {
       total_reversals: "0.00",
       net_total: "1000.00",
       total_card_net: "1000.00",
-      total_manual_expense: "0", total_payroll_deductions: "0",
+      total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0",
       total_income: "0",
       balance: "-1000.00",
       invoice_count: 1,
@@ -149,7 +149,7 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "2026-03", to: "2026-05" },
         total_charged: "0", total_reversals: "0", net_total: "0",
-        total_card_net: "0", total_manual_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
+        total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
         subscriptions: [], subscriptions_total: "0",
         invoice_count: 3, categories: [], top_transactions: [],
@@ -177,7 +177,7 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "2026-05", to: "2026-05" },
         total_charged: "0", total_reversals: "0", net_total: "0",
-        total_card_net: "0", total_manual_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
+        total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
         subscriptions: [], subscriptions_total: "0",
         invoice_count: 1, categories: [], top_transactions: [],
@@ -199,7 +199,7 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "2026-05", to: "2026-05" },
         total_charged: "0", total_reversals: "0", net_total: "0",
-        total_card_net: "0", total_manual_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
+        total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
         subscriptions: [], subscriptions_total: "0",
         invoice_count: 2, categories: [], top_transactions: [], monthly_trend: [],
@@ -220,7 +220,7 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "", to: "" },
         total_charged: "0", total_reversals: "0", net_total: "0",
-        total_card_net: "0", total_manual_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
+        total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
         subscriptions: [], subscriptions_total: "0",
         invoice_count: 0, categories: [], top_transactions: [], monthly_trend: [],
@@ -244,7 +244,7 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "2026-05", to: "2026-05" },
         total_charged: "0", total_reversals: "0", net_total: "0",
-        total_card_net: "0", total_manual_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
+        total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
         subscriptions: [], subscriptions_total: "0",
         invoice_count: 1, categories: [], top_transactions: [], monthly_trend: [],
@@ -265,7 +265,7 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "2026-05", to: "2026-05" },
         total_charged: "0", total_reversals: "0", net_total: "0",
-        total_card_net: "0", total_manual_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
+        total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
         subscriptions: [], subscriptions_total: "0",
         invoice_count: 1, categories: [], top_transactions: [], monthly_trend: [],
@@ -294,7 +294,7 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "", to: "" },
         total_charged: "0", total_reversals: "0", net_total: "0",
-        total_card_net: "0", total_manual_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
+        total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
         subscriptions: [], subscriptions_total: "0",
         invoice_count: 0, categories: [], top_transactions: [], monthly_trend: [],
@@ -318,7 +318,7 @@ describe("invoice.store", () => {
       mockGetDashboard.mockResolvedValue({
         period: { from: "", to: "" },
         total_charged: "0", total_reversals: "0", net_total: "0",
-        total_card_net: "0", total_manual_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
+        total_card_net: "0", total_manual_expense: "0", total_variable_expense: "0", total_payroll_deductions: "0", total_income: "0", balance: "0",
         weekday_spending: ["0","0","0","0","0","0","0"], installments: [], installments_month_total: "0", installments_future_total: "0",
         subscriptions: [], subscriptions_total: "0",
         invoice_count: 1, categories: [], top_transactions: [], monthly_trend: [],

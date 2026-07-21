@@ -208,7 +208,7 @@ const chartOption = computed(() => {
         <div class="kpi">
           <span class="lbl">Despesa total</span>
           <span class="val exp">{{ brl(data.expense_total) }}</span>
-          <span class="sub2">cartão {{ brl(data.card_total) }} + fixos {{ brl(data.fixed_total) }}<template v-if="n(data.payroll_total) > 0"> + descontos {{ brl(data.payroll_total) }}</template></span>
+          <span class="sub2">cartão {{ brl(data.card_total) }} + fixos {{ brl(data.fixed_total) }}<template v-if="n(data.variable_total) > 0"> + avulsos {{ brl(data.variable_total) }}</template><template v-if="n(data.payroll_total) > 0"> + descontos {{ brl(data.payroll_total) }}</template></span>
         </div>
         <div class="kpi">
           <span class="lbl">Saldo do período</span>
@@ -331,11 +331,13 @@ const chartOption = computed(() => {
           <div class="segbar">
             <div class="s1" :style="{ width: (n(data.expense_total) ? n(data.fixed_total) / n(data.expense_total) * 100 : 0) + '%' }"></div>
             <div class="s2" :style="{ width: (n(data.expense_total) ? n(data.card_total) / n(data.expense_total) * 100 : 0) + '%' }"></div>
+            <div v-if="n(data.variable_total) > 0" class="s4" :style="{ width: (n(data.expense_total) ? n(data.variable_total) / n(data.expense_total) * 100 : 0) + '%' }"></div>
             <div class="s3" :style="{ width: (n(data.expense_total) ? n(data.payroll_total) / n(data.expense_total) * 100 : 0) + '%' }"></div>
           </div>
           <div class="leg">
             <span><i class="dotc fix"></i> Fixo · {{ brl(data.fixed_total) }}</span>
             <span><i class="dotc var"></i> Cartão · {{ brl(data.card_total) }}</span>
+            <span v-if="n(data.variable_total) > 0"><i class="dotc avul"></i> Avulsos · {{ brl(data.variable_total) }}</span>
             <span v-if="n(data.payroll_total) > 0"><i class="dotc ded"></i> Descontos · {{ brl(data.payroll_total) }}</span>
           </div>
         </div>
@@ -437,8 +439,8 @@ h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 6px;
 
 /* fixo vs var */
 .segbar { height: 16px; border-radius: 8px; overflow: hidden; display: flex; background: var(--clr-track); margin-bottom: .7rem; }
-.segbar .s1 { background: var(--clr-accent); } .segbar .s2 { background: var(--clr-amber); } .segbar .s3 { background: var(--clr-negative); }
-.dotc.ded { background: var(--clr-negative); }
+.segbar .s1 { background: var(--clr-accent); } .segbar .s2 { background: var(--clr-amber); } .segbar .s3 { background: var(--clr-negative); } .segbar .s4 { background: var(--clr-violet, #8b5cf6); }
+.dotc.ded { background: var(--clr-negative); } .dotc.avul { background: var(--clr-violet, #8b5cf6); }
 .leg { display: flex; gap: 1rem; font-size: 12px; flex-wrap: wrap; }
 .leg span { display: flex; align-items: center; gap: .4rem; color: var(--clr-text-secondary); }
 .dotc { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }

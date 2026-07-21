@@ -23,6 +23,8 @@ pub struct ManualAgg {
     pub is_salary: bool,
     /// Expense only: true for payroll deductions (kept out of "contas fixas").
     pub is_payroll: bool,
+    /// Whether this comes from a recurring entry (fixo) vs a one-off (avulso).
+    pub recurring: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -78,8 +80,10 @@ pub struct DashboardData {
     pub net_total: String,
     /// Card net only (total_charged + total_reversals).
     pub total_card_net: String,
-    /// Sum of manual fixed expenses in scope (contas fixas — excludes payroll).
+    /// Sum of recurring manual fixed expenses in scope (contas fixas — excludes payroll).
     pub total_manual_expense: String,
+    /// Sum of one-off (avulso) manual expenses in scope.
+    pub total_variable_expense: String,
     /// Sum of payroll deductions (folha) in scope.
     pub total_payroll_deductions: String,
     /// Sum of manual income (crédito) in scope.
@@ -127,10 +131,17 @@ pub fn compute_dashboard(
 
     let total_card_net = total_charged + total_reversals;
 
-    // Manual fixed expenses ("contas fixas") — excludes payroll deductions.
+    // Manual fixed expenses ("contas fixas") — recurring, excludes payroll deductions.
     let total_manual_expense: Decimal = manual
         .iter()
-        .filter(|m| m.kind == EntryKind::Expense && !m.is_payroll)
+        .filter(|m| m.kind == EntryKind::Expense && !m.is_payroll && m.recurring)
+        .map(|m| m.amount)
+        .fold(dec!(0), |acc, a| acc + a);
+
+    // One-off (avulso) manual expenses — counted in the grand total, shown apart.
+    let total_variable_expense: Decimal = manual
+        .iter()
+        .filter(|m| m.kind == EntryKind::Expense && !m.is_payroll && !m.recurring)
         .map(|m| m.amount)
         .fold(dec!(0), |acc, a| acc + a);
 
@@ -147,8 +158,8 @@ pub fn compute_dashboard(
         .map(|m| m.amount)
         .fold(dec!(0), |acc, a| acc + a);
 
-    // Expense grand total = card + fixed manual expenses + payroll deductions.
-    let net_total = total_card_net + total_manual_expense + total_payroll_deductions;
+    // Expense grand total = card + fixed + one-off manual expenses + payroll deductions.
+    let net_total = total_card_net + total_manual_expense + total_variable_expense + total_payroll_deductions;
     let balance = total_income - net_total;
 
     // Category aggregation over card charges + synthetic manual-expense transactions.
@@ -190,6 +201,7 @@ pub fn compute_dashboard(
         net_total: net_total.to_string(),
         total_card_net: total_card_net.to_string(),
         total_manual_expense: total_manual_expense.to_string(),
+        total_variable_expense: total_variable_expense.to_string(),
         total_payroll_deductions: total_payroll_deductions.to_string(),
         total_income: total_income.to_string(),
         balance: balance.to_string(),
@@ -416,6 +428,7 @@ mod tests {
             tx: entry.to_transaction(month),
             is_salary: entry.is_salary,
             is_payroll: false,
+            recurring: entry.recurring,
         }
     }
 
