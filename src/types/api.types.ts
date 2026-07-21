@@ -73,6 +73,27 @@ export interface MonthlySnapshot {
   categories: CategorySnapshot[];
 }
 
+export interface IpcaGroup {
+  name: string;
+  month_var: string;
+}
+
+export interface IpcaHeadline {
+  ref_month: string; // "YYYY-MM"
+  month: string;
+  year: string;
+  twelve: string;
+}
+
+export interface InflationData {
+  available: boolean;
+  headline: IpcaHeadline | null;
+  groups: IpcaGroup[];
+  personal_month: string;
+  personal_diff: string;
+  fetched_at: string;
+}
+
 export interface ForecastItem {
   description: string;
   parcela: string; // "3/5"

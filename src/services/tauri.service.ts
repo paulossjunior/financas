@@ -5,6 +5,7 @@ import type {
   DashboardFilter,
   EntryKind,
   ImportResult,
+  InflationData,
   InvoiceInfo,
   ManualEntry,
   Payslip,
@@ -82,6 +83,24 @@ export async function getYearSummary(yearFrom?: number, yearTo?: number): Promis
       yearFrom: yearFrom ?? null,
       yearTo: yearTo ?? null,
     });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+/** Read cached inflation indices (offline) + personal inflation. */
+export async function getInflation(): Promise<InflationData> {
+  try {
+    return await invoke<InflationData>("get_inflation");
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+/** OPT-IN: fetch the latest IPCA from the IBGE, cache locally, return updated data. */
+export async function fetchIpca(): Promise<InflationData> {
+  try {
+    return await invoke<InflationData>("fetch_ipca");
   } catch (e) {
     throw new Error(mapError(String(e)));
   }
