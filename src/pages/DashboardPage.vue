@@ -37,6 +37,7 @@ const savingsRate = computed(() => (income.value > 0 ? (balance.value / income.v
 
 const cardPct = computed(() => (expense.value > 0 ? (cardNet.value / expense.value) * 100 : 0));
 const fixoPct = computed(() => (expense.value > 0 ? (fixo.value / expense.value) * 100 : 0));
+const payrollPct = computed(() => (expense.value > 0 ? (payrollDed.value / expense.value) * 100 : 0));
 
 const categories = computed<Category[]>(() =>
   (d.value?.categories ?? []).map((c) => ({ ...c, net_total: String(num(c.net_total) / divisor.value) }))
@@ -476,10 +477,14 @@ function refLabel(): string {
               <div class="seg seg-fixo" :style="{ flexGrow: fixo }" :title="`Fixos: ${fmt(fixo)}`">
                 <span v-if="fixoPct > 12">Fixos {{ fixoPct.toFixed(1) }}%</span>
               </div>
+              <div v-if="payrollDed > 0" class="seg seg-payroll" :style="{ flexGrow: payrollDed }" :title="`Descontos: ${fmt(payrollDed)}`">
+                <span v-if="payrollPct > 12">Descontos {{ payrollPct.toFixed(1) }}%</span>
+              </div>
             </div>
             <div class="legend">
               <span><i class="dot dot-card"></i> Cartão / variável — {{ fmt(cardNet) }}</span>
               <span><i class="dot dot-fixo"></i> Fixos — {{ fmt(fixo) }}</span>
+              <span v-if="payrollDed > 0"><i class="dot dot-payroll"></i> Descontos da folha — {{ fmt(payrollDed) }}</span>
             </div>
             <p class="note">Regra de bolso saudável: fixos ≤ 50% da renda. Fique de olho no <b>valor absoluto</b> de água e energia.</p>
           </div>
@@ -733,11 +738,13 @@ h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .seg { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 700; min-width: 3px; white-space: nowrap; overflow: hidden; }
 .seg-card { background: var(--accent); }
 .seg-fixo { background: var(--amber); }
+.seg-payroll { background: var(--red); }
 .legend { display: flex; gap: 18px; margin-top: 12px; font-size: 12.5px; color: var(--ink-2); flex-wrap: wrap; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .dot-card { background: var(--accent); }
 .dot-fixo { background: var(--amber); }
+.dot-payroll { background: var(--red); }
 .note { margin-top: 16px; font-size: 12.5px; color: var(--ink-3); }
 .note b { color: var(--ink-2); }
 
