@@ -1,11 +1,14 @@
-use calamine::{open_workbook_auto, Data, Reader};
+use calamine::{open_workbook_auto, Data, Range, Reader, Xlsx};
+use std::io::Cursor;
 use std::path::Path;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ParseError {
-    #[error("Arquivo protegido por senha. Abra no Excel/Numbers, remova a proteção e salve novamente.")]
+    #[error("Arquivo protegido por senha. Informe a senha para abrir a fatura.")]
     Encrypted,
+    #[error("Senha incorreta. Verifique a senha da fatura e tente novamente.")]
+    WrongPassword,
     #[error("Formato inválido: colunas obrigatórias ausentes: {0}")]
     InvalidFormat(String),
     #[error("Erro ao abrir arquivo: {0}")]
@@ -23,23 +26,37 @@ pub struct ParsedSheet {
     pub rows: Vec<RawRow>,
 }
 
-pub fn parse_xlsx(path: &Path) -> Result<ParsedSheet, ParseError> {
+/// Parse a BTG xlsx invoice. When the file is password-protected (ECMA-376/OLE),
+/// `password` is required — the bytes are decrypted in memory before parsing.
+pub fn parse_xlsx(path: &Path, password: Option<&str>) -> Result<ParsedSheet, ParseError> {
     let bytes = std::fs::read(path).map_err(|e| ParseError::IoError(e.to_string()))?;
 
     if is_encrypted(&bytes) {
-        return Err(ParseError::Encrypted);
+        let pw = match password {
+            Some(p) if !p.trim().is_empty() => p,
+            _ => return Err(ParseError::Encrypted),
+        };
+        let decrypted = office_crypto::decrypt_from_bytes(bytes, pw)
+            .map_err(|e| ParseError::InvalidFormat(format!("decrypt: {e:?}")))?;
+        let mut wb: Xlsx<_> = Xlsx::new(Cursor::new(decrypted))
+            .map_err(|e| ParseError::InvalidFormat(e.to_string()))?;
+        let sheet_name = wb.sheet_names().first().ok_or(ParseError::EmptySheet)?.clone();
+        let range = wb
+            .worksheet_range(&sheet_name)
+            .map_err(|e| ParseError::IoError(e.to_string()))?;
+        return range_to_sheet(range);
     }
 
     let mut workbook = open_workbook_auto(path)
         .map_err(|e| ParseError::IoError(e.to_string()))?;
-
-    let sheet_names = workbook.sheet_names().to_vec();
-    let sheet_name = sheet_names.first().ok_or(ParseError::EmptySheet)?.clone();
-
+    let sheet_name = workbook.sheet_names().first().ok_or(ParseError::EmptySheet)?.clone();
     let range = workbook
         .worksheet_range(&sheet_name)
         .map_err(|e| ParseError::IoError(e.to_string()))?;
+    range_to_sheet(range)
+}
 
+fn range_to_sheet(range: Range<Data>) -> Result<ParsedSheet, ParseError> {
     let rows: Vec<RawRow> = range
         .rows()
         .enumerate()

@@ -45,9 +45,19 @@ onErrorCaptured((err) => {
 <template>
   <div class="app">
     <nav class="nav">
-      <RouterLink to="/" active-class="active">📊 Dashboard</RouterLink>
-      <RouterLink to="/historico" active-class="active">📈 Histórico</RouterLink>
-      <RouterLink to="/configuracoes" active-class="active">⚙️ Configurações</RouterLink>
+      <div class="nav-inner">
+        <div class="brand"><span class="brand-mark">◍</span> Finanças</div>
+        <div class="tabs">
+          <RouterLink to="/" active-class="active"><span class="ic">📊</span>Dashboard</RouterLink>
+          <RouterLink to="/ano" active-class="active"><span class="ic">📅</span>Ano</RouterLink>
+          <RouterLink to="/transacoes" active-class="active"><span class="ic">🧾</span>Despesas</RouterLink>
+          <RouterLink to="/receitas-fixos" active-class="active"><span class="ic">💰</span>Fixos &amp; Renda</RouterLink>
+          <RouterLink to="/contracheque" active-class="active"><span class="ic">📄</span>Contracheque</RouterLink>
+          <RouterLink to="/mapeamento" active-class="active"><span class="ic">🗂️</span>Mapeamento</RouterLink>
+          <RouterLink to="/historico" active-class="active"><span class="ic">📈</span>Histórico</RouterLink>
+          <RouterLink to="/configuracoes" active-class="active"><span class="ic">⚙️</span>Configurações</RouterLink>
+        </div>
+      </div>
     </nav>
 
     <div v-if="globalError" class="global-error" role="alert">
@@ -62,44 +72,80 @@ onErrorCaptured((err) => {
 </template>
 
 <style>
-  /* ── Fluent Design Tokens ── */
+  /* ── Emerald design tokens (exact artifact palette) ── */
   :root {
-    --clr-bg:          #f3f3f3;
+    --clr-bg:          #f4f6f5;
     --clr-surface:     #ffffff;
-    --clr-surface-alt: #fafafa;
-    --clr-stroke:      #e0e0e0;
-    --clr-stroke-soft: #ebebeb;
+    --clr-surface-alt: #eef1f0;
+    --clr-stroke:      #dde3e1;
+    --clr-stroke-soft: #e7ecea;
 
-    --clr-text-primary:   #201f1e;
-    --clr-text-secondary: #605e5c;
-    --clr-text-muted:     #a19f9d;
+    --clr-text-primary:   #16211e;
+    --clr-text-secondary: #4a5a55;
+    --clr-text-muted:     #7c8b86;
 
-    --clr-accent:        #0078d4;
-    --clr-accent-hover:  #106ebe;
-    --clr-accent-light:  #eff6fc;
+    --clr-accent:        #0e7c66;
+    --clr-accent-hover:  #0b6353;
+    --clr-accent-light:  #d3ebe4;
 
-    --clr-positive:      #107c10;
-    --clr-negative:      #a4262c;
-    --clr-warning:       #797673;
+    --clr-positive:      #0e7c66;
+    --clr-negative:      #b91c1c;
+    --clr-warning:       #b45309;
 
-    --clr-chart-1: #0078d4;
-    --clr-chart-2: #00b7c3;
-    --clr-chart-3: #8764b8;
-    --clr-chart-4: #e3008c;
-    --clr-chart-5: #bad80a;
-    --clr-chart-6: #00bcf2;
-    --clr-chart-7: #ff8c00;
-    --clr-chart-8: #e81123;
+    --clr-amber:         #b45309;
+    --clr-amber-soft:    #f7e6cf;
+    --clr-red-soft:      #f6d9d9;
+    --clr-track:         #e7ecea;
 
-    --radius-sm:  4px;
+    --clr-chart-1: #0e7c66;
+    --clr-chart-2: #0ea5a0;
+    --clr-chart-3: #6d4aff;
+    --clr-chart-4: #b45309;
+    --clr-chart-5: #d4a72c;
+    --clr-chart-6: #2b7a78;
+    --clr-chart-7: #c026a6;
+    --clr-chart-8: #b91c1c;
+
+    --radius-sm:  5px;
     --radius-md:  8px;
-    --radius-lg:  12px;
+    --radius-lg:  14px;
 
-    --shadow-sm:  0 1px 2px rgba(0,0,0,.06), 0 1px 4px rgba(0,0,0,.04);
-    --shadow-md:  0 2px 4px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.06);
-    --shadow-lg:  0 4px 8px rgba(0,0,0,.10), 0 8px 24px rgba(0,0,0,.08);
+    --shadow-sm:  0 1px 2px rgba(20,33,30,.05), 0 6px 20px rgba(20,33,30,.05);
+    --shadow-md:  0 2px 6px rgba(20,33,30,.08), 0 10px 28px rgba(20,33,30,.07);
+    --shadow-lg:  0 4px 10px rgba(20,33,30,.10), 0 16px 40px rgba(20,33,30,.10);
 
-    --font-body: "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --clr-bg:          #0d1513;
+      --clr-surface:     #14201d;
+      --clr-surface-alt: #1a2825;
+      --clr-stroke:      #263531;
+      --clr-stroke-soft: #21302c;
+
+      --clr-text-primary:   #e8efec;
+      --clr-text-secondary: #a9b8b3;
+      --clr-text-muted:     #7a8a85;
+
+      --clr-accent:        #34c9a6;
+      --clr-accent-hover:  #46d9b6;
+      --clr-accent-light:  #123d34;
+
+      --clr-positive:      #34c9a6;
+      --clr-negative:      #f08a8a;
+      --clr-warning:       #e0a458;
+
+      --clr-amber:         #e0a458;
+      --clr-amber-soft:    #3a2b12;
+      --clr-red-soft:      #3a1c1c;
+      --clr-track:         #21302c;
+
+      --shadow-sm:  0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.35);
+      --shadow-md:  0 2px 6px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.4);
+      --shadow-lg:  0 4px 10px rgba(0,0,0,.45), 0 16px 40px rgba(0,0,0,.45);
+    }
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -110,59 +156,81 @@ onErrorCaptured((err) => {
     background: var(--clr-bg);
     color: var(--clr-text-primary);
     -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
   }
 
-  /* Fluent scrollbar */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #c8c6c4; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #a19f9d; }
+  ::-webkit-scrollbar-thumb { background: var(--clr-stroke); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--clr-text-muted); }
 </style>
 
 <style scoped>
 .app { min-height: 100vh; display: flex; flex-direction: column; }
 
-/* Fluent acrylic nav */
+/* Emerald top bar */
 .nav {
-  background: rgba(255,255,255,0.85);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: var(--clr-surface);
   border-bottom: 1px solid var(--clr-stroke);
-  padding: 0 1.5rem;
-  display: flex;
-  gap: 0;
   position: sticky;
   top: 0;
   z-index: 100;
+  box-shadow: 0 1px 0 rgba(20,33,30,.02);
 }
-.nav a {
-  padding: 0.9rem 1.1rem;
+.nav-inner {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  height: 60px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--clr-text-primary);
+  white-space: nowrap;
+}
+.brand-mark {
+  color: var(--clr-accent);
+  font-size: 1.15rem;
+  line-height: 1;
+}
+.tabs { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+.tabs a {
+  padding: 0.5rem 0.85rem;
   text-decoration: none;
   color: var(--clr-text-secondary);
-  font-size: 0.875rem;
-  font-weight: 400;
-  border-bottom: 2px solid transparent;
-  transition: color 0.1s, border-color 0.1s, background 0.1s;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: 100px;
+  transition: color 0.12s, background 0.12s;
   display: flex;
   align-items: center;
   gap: 0.4rem;
 }
-.nav a:hover {
+.tabs a .ic { font-size: 0.9rem; line-height: 1; }
+.tabs a:hover {
   color: var(--clr-text-primary);
-  background: rgba(0,0,0,0.04);
+  background: var(--clr-surface-alt);
 }
-.nav a.active {
+.tabs a.active {
   color: var(--clr-accent);
-  border-bottom-color: var(--clr-accent);
-  font-weight: 600;
+  background: var(--clr-accent-light);
+  font-weight: 700;
 }
 
-/* Fluent message bar (error) */
+/* Message bar (error) — emerald palette */
 .global-error {
-  background: #fde7e9;
-  border-bottom: 1px solid #f1707b;
+  background: var(--clr-red-soft);
+  border-bottom: 1px solid var(--clr-negative);
   color: var(--clr-negative);
-  padding: 0.65rem 1.5rem;
+  padding: 0.65rem 2rem;
   font-size: 0.8125rem;
   display: flex;
   align-items: center;
@@ -180,7 +248,12 @@ onErrorCaptured((err) => {
   flex-shrink: 0;
   line-height: 1;
 }
-.dismiss:hover { background: rgba(164,38,44,0.08); }
+.dismiss:hover { background: rgba(185,28,28,0.1); }
 
 main { flex: 1; }
+
+@media (max-width: 720px) {
+  .nav-inner { flex-direction: column; height: auto; padding: 0.6rem 1rem; gap: 0.5rem; align-items: flex-start; }
+  .tabs { gap: 0.15rem; }
+}
 </style>

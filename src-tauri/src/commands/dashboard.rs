@@ -1,10 +1,13 @@
+use std::sync::Mutex;
+
 use serde::{Deserialize, Serialize};
 
 use tauri::State;
 use uuid::Uuid;
 
 use crate::application::{get_dashboard::get_dashboard, store::SharedStore};
-use crate::domain::{DashboardData, DashboardFilter};
+use crate::domain::{compute_year_summary, AppConfig, DashboardData, DashboardFilter, YearSummary};
+use crate::infrastructure::db::{persist, SharedDb};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InvoiceInfo {
@@ -20,9 +23,27 @@ pub struct InvoiceInfo {
 pub async fn get_dashboard_cmd(
     filter: Option<DashboardFilter>,
     store: State<'_, SharedStore>,
+    config: State<'_, Mutex<AppConfig>>,
+    db: State<'_, SharedDb>,
 ) -> Result<DashboardData, String> {
+    let manual_entries = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
+    let payslips = db.lock().map_err(|e| e.to_string())?.load_payslips().unwrap_or_default();
     let store_lock = store.lock().map_err(|e| e.to_string())?;
-    get_dashboard(&store_lock, filter.unwrap_or_default())
+    get_dashboard(&store_lock, &manual_entries, &payslips, filter.unwrap_or_default())
+}
+
+#[tauri::command]
+pub async fn get_year_summary_cmd(
+    year_from: Option<i32>,
+    year_to: Option<i32>,
+    store: State<'_, SharedStore>,
+    config: State<'_, Mutex<AppConfig>>,
+    db: State<'_, SharedDb>,
+) -> Result<YearSummary, String> {
+    let manual = config.lock().map_err(|e| e.to_string())?.manual_entries.clone();
+    let invoices = store.lock().map_err(|e| e.to_string())?.list_owned();
+    let payslips = db.lock().map_err(|e| e.to_string())?.load_payslips().unwrap_or_default();
+    Ok(compute_year_summary(&invoices, &manual, &payslips, year_from, year_to))
 }
 
 #[tauri::command]
@@ -47,10 +68,16 @@ pub async fn list_invoices(store: State<'_, SharedStore>) -> Result<Vec<InvoiceI
 pub async fn remove_invoice(
     invoice_id: String,
     store: State<'_, SharedStore>,
+    db: State<'_, SharedDb>,
 ) -> Result<(), String> {
     let id = Uuid::parse_str(&invoice_id).map_err(|e| e.to_string())?;
-    let mut store_lock = store.lock().map_err(|e| e.to_string())?;
-    if store_lock.remove(&id) {
+    let removed = {
+        let mut store_lock = store.lock().map_err(|e| e.to_string())?;
+        store_lock.remove(&id)
+    };
+    if removed {
+        let snapshot = store.lock().map_err(|e| e.to_string())?.list_owned();
+        persist(&db, &snapshot);
         Ok(())
     } else {
         Err("INVOICE_NOT_FOUND".into())
