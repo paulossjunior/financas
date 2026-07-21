@@ -543,6 +543,7 @@ const selChartOption = computed(() => {
                 <th>Categoria</th>
                 <th v-for="y in yearsInRange" :key="y">{{ y }}</th>
                 <th>Total</th>
+                <th>Média</th>
               </tr>
             </thead>
             <tbody>
@@ -562,11 +563,13 @@ const selChartOption = computed(() => {
                   <span v-else class="cell muted">—</span>
                 </td>
                 <td><b>{{ brl(r.total) }}</b></td>
+                <td>{{ brl(r.total / Math.max(1, yearsInRange.length)) }}</td>
               </tr>
               <tr class="tot">
                 <td>{{ selectedCats.size ? `Total (${selectedCats.size} selec.)` : "Total (todas)" }}</td>
                 <td v-for="y in yearsInRange" :key="y">{{ brl(totalsByYear.get(y) ?? 0) }}</td>
                 <td>{{ brl(grandTotalSel) }}</td>
+                <td>{{ brl(grandTotalSel / Math.max(1, yearsInRange.length)) }}</td>
               </tr>
             </tbody>
           </table>
