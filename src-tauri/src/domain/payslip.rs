@@ -25,7 +25,7 @@ pub struct PayslipItem {
     pub offsetting: bool,
 }
 
-/// A parsed monthly payslip (SIGEPE "Comprovante de Rendimentos").
+/// A parsed monthly payslip (SouGov.br "Comprovante de Rendimentos").
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Payslip {
     pub id: Uuid,
@@ -90,7 +90,7 @@ pub fn deduction_category(desc: &str) -> String {
 }
 
 /// Normalize a description for wash matching: uppercase, drop trailing pure-digit
-/// tokens (SIGEPE appends codes like "001"), collapse whitespace.
+/// tokens (SouGov.br appends codes like "001"), collapse whitespace.
 fn norm_desc(s: &str) -> String {
     let mut toks: Vec<&str> = s.split_whitespace().collect();
     while toks.last().map(|t| t.chars().all(|c| c.is_ascii_digit())).unwrap_or(false) {
@@ -110,7 +110,7 @@ fn is_bonus(desc: &str) -> bool {
         .iter()
         .any(|k| u.contains(k))
 }
-/// Parse the flattened text of a SIGEPE payslip into structured, classified data.
+/// Parse the flattened text of a SouGov.br payslip into structured, classified data.
 pub fn parse_payslip_text(text: &str, source_file: &str) -> Result<Payslip, String> {
     let month = parse_month(text).ok_or("Não achei o mês/ano no contracheque.")?;
     let mut items = parse_items(text)?;
@@ -179,7 +179,7 @@ fn sum(items: &[PayslipItem], kind: &str, class: Option<&str>) -> Decimal {
 }
 
 /// Mark rendimento/desconto mirror pairs (same normalized description + equal amount)
-/// as offsetting washes — SIGEPE advance-reconciliation entries that net to zero.
+/// as offsetting washes — SouGov.br advance-reconciliation entries that net to zero.
 fn mark_washes(items: &mut [PayslipItem]) {
     // Map each desconto (norm_desc, amount) to its index, consumed once when matched.
     let mut pool: HashMap<(String, String), Vec<usize>> = HashMap::new();

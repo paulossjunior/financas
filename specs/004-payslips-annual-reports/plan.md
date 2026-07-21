@@ -4,7 +4,7 @@
 
 ## Summary
 
-Extensões sobre a base 001–003, entregues incrementalmente na branch `002-modern-dashboard-ui`. Migrou a persistência para SQLite, adicionou import de contracheque SIGEPE, visão anual com filtro, matriz categoria × ano, treemap, separação de despesas avulsas, teto do cartão, relatórios em PDF, drill-down por categoria e CI/CD para gerar instaladores macOS/Windows.
+Extensões sobre a base 001–003, entregues incrementalmente na branch `002-modern-dashboard-ui`. Migrou a persistência para SQLite, adicionou import de contracheque SouGov.br, visão anual com filtro, matriz categoria × ano, treemap, separação de despesas avulsas, teto do cartão, relatórios em PDF, drill-down por categoria e CI/CD para gerar instaladores macOS/Windows.
 
 ## Technical Context
 
@@ -16,7 +16,7 @@ Extensões sobre a base 001–003, entregues incrementalmente na branch `002-mod
 ## Componentes por área
 
 **Backend**
-- `domain/payslip.rs` — parser SIGEPE (regex sobre texto do PDF): salário/bônus (inclui "Cargo de Direção – CD"), wash, líquido por item, `deduction_category`.
+- `domain/payslip.rs` — parser SouGov.br (regex sobre texto do PDF): salário/bônus (inclui "Cargo de Direção – CD"), wash, líquido por item, `deduction_category`.
 - `domain/year.rs` — `compute_year_summary`: cartão por data da compra, fixos/avulsos/descontos por mês, `YearMonthPoint.categories`, teto (2 cenários), anos disponíveis.
 - `domain/dashboard.rs` + `application/get_dashboard.rs` — split fixo/avulso/payroll; payslip supersede salário manual.
 - `infrastructure/db.rs` — tabelas payslips/payslip_items; migrações; upsert por UUID v5; poda de overrides órfãos; `parse_money` com log.
