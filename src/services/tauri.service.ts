@@ -160,6 +160,8 @@ export interface ManualEntryInput {
   category: string;
   month: string;
   recurring: boolean;
+  /** Income only: true = salary, false = bonus. */
+  isSalary?: boolean;
 }
 
 export async function listManualEntries(): Promise<ManualEntry[]> {

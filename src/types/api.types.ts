@@ -97,6 +97,11 @@ export interface YearSummary {
   tx_count: number;
   categories: Category[];
   available_years: number[];
+  salary_month: string;
+  salary_only: string;
+  fixed_month: string;
+  card_ceiling: string;
+  card_ceiling_salary: string;
 }
 
 export interface DashboardPeriod {
@@ -156,6 +161,8 @@ export interface ManualEntry {
   /** ISO "YYYY-MM". */
   month: string;
   recurring: boolean;
+  /** Income only: true = salary, false = bonus. */
+  is_salary: boolean;
 }
 
 export interface CategoryRule {

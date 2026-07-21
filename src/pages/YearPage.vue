@@ -15,6 +15,16 @@ const loading = ref(true);
 const error = ref<string | null>(null);
 const selectedYear = ref<number | null>(null); // null = todos os anos
 const years = ref<number[]>([]);
+const rangeFrom = ref<string | null>(null); // YYYY-MM
+const rangeTo = ref<string | null>(null);
+
+// Months shown in the per-month views (chart, saldo, teto), after the interval filter.
+const viewMonths = computed(() => {
+  const ms = data.value?.months ?? [];
+  return ms.filter(
+    (m) => (!rangeFrom.value || m.month >= rangeFrom.value) && (!rangeTo.value || m.month <= rangeTo.value)
+  );
+});
 
 async function load(): Promise<void> {
   loading.value = true;
@@ -23,6 +33,8 @@ async function load(): Promise<void> {
     data.value = await getYearSummary(selectedYear.value ?? undefined);
     // Keep the year list stable (backend returns all years regardless of filter).
     if (data.value.available_years.length) years.value = data.value.available_years;
+    rangeFrom.value = null; // reset interval on (re)load
+    rangeTo.value = null;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -66,6 +78,22 @@ const fixedPerMonth = computed(() => {
 const savingsPct = computed(() => (data.value ? Math.round(data.value.savings_rate * 1000) / 10 : 0));
 const balanceNum = computed(() => (data.value ? n(data.value.balance_total) : 0));
 
+// Card ceiling — two simulations: all recurring income vs. salary-flagged only.
+const ceilBase = ref<"all" | "salary">("all");
+const ceiling = computed(() => {
+  if (!data.value) return 0;
+  return ceilBase.value === "all" ? n(data.value.card_ceiling) : n(data.value.card_ceiling_salary);
+});
+const hasCeiling = computed(() => (data.value ? n(data.value.salary_month) > 0 : false));
+const ceilingScaleMax = computed(() => {
+  const cards = viewMonths.value.map((m) => n(m.card));
+  return Math.max(ceiling.value, ...cards, 1) * 1.08;
+});
+const monthsWithin = computed(() => {
+  const ms = viewMonths.value;
+  return { within: ms.filter((m) => n(m.card) <= ceiling.value).length, total: ms.length };
+});
+
 // Category ranking: top 8 + grouped remainder.
 const ranking = computed(() => {
   const cats = (data.value?.categories ?? [])
@@ -81,20 +109,21 @@ const ranking = computed(() => {
 const rankMax = computed(() => ranking.value[0]?.value || 1);
 
 const saldoMax = computed(() =>
-  Math.max(1, ...(data.value?.months ?? []).map((m) => Math.abs(n(m.balance))))
+  Math.max(1, ...viewMonths.value.map((m) => Math.abs(n(m.balance))))
 );
 
 // ECharts option (theme-aware).
 const chartOption = computed(() => {
   const d = data.value;
   if (!d) return {};
+  const ms = viewMonths.value;
   const teal = isDark.value ? "#34c9a6" : "#0e7c66";
   const coral = isDark.value ? "#f0a07a" : "#cf5b34";
   const axis = isDark.value ? "#8aa39b" : "#5b6f68";
   const split = isDark.value ? "rgba(255,255,255,.08)" : "rgba(16,32,27,.08)";
   const tipBg = isDark.value ? "#14201d" : "#ffffff";
   const tipInk = isDark.value ? "#e8f0ed" : "#10201b";
-  const labels = d.months.map((m) => monthLabel(m.month));
+  const labels = ms.map((m) => monthLabel(m.month));
   return {
     color: [teal, coral],
     tooltip: {
@@ -105,7 +134,7 @@ const chartOption = computed(() => {
       textStyle: { color: tipInk, fontSize: 12 },
       formatter: (ps: any[]) => {
         const i = ps[0].dataIndex;
-        const m = d.months[i];
+        const m = ms[i];
         const bal = n(m.balance);
         const sign = bal >= 0 ? "+" : "−";
         return `<b>${monthLabel(m.month)}</b><br/>`
@@ -129,8 +158,8 @@ const chartOption = computed(() => {
       splitLine: { lineStyle: { color: split } },
     },
     series: [
-      { name: "Receita", type: "line", smooth: false, data: d.months.map((m) => n(m.income)), lineStyle: { width: 2.5 }, symbol: "circle", symbolSize: 6 },
-      { name: "Despesa", type: "line", smooth: false, data: d.months.map((m) => n(m.expense)), lineStyle: { width: 2.5 }, symbol: "circle", symbolSize: 6,
+      { name: "Receita", type: "line", smooth: false, data: ms.map((m) => n(m.income)), lineStyle: { width: 2.5 }, symbol: "circle", symbolSize: 6 },
+      { name: "Despesa", type: "line", smooth: false, data: ms.map((m) => n(m.expense)), lineStyle: { width: 2.5 }, symbol: "circle", symbolSize: 6,
         areaStyle: { color: coral, opacity: isDark.value ? 0.12 : 0.10 } },
     ],
   };
@@ -198,20 +227,40 @@ const chartOption = computed(() => {
           <span class="val">{{ brl(fixedPerMonth) }}</span>
           <span class="sub2">recorrentes</span>
         </div>
+        <div class="kpi">
+          <span class="lbl">Teto do cartão</span>
+          <span class="val" v-if="hasCeiling">{{ brl(ceiling) }}</span>
+          <span class="val" style="color:var(--clr-text-muted)" v-else>—</span>
+          <span class="sub2" v-if="hasCeiling">base: {{ ceilBase === 'all' ? 'renda recorrente' : 'só salário' }}</span>
+          <span class="sub2 warn" v-else>cadastre o salário (receita recorrente)</span>
+        </div>
       </div>
 
       <!-- Line chart -->
       <div class="card">
-        <h2>Receita vs. despesa por mês</h2>
-        <p class="hint">Despesa = cartão (por data da compra) + gastos fixos.</p>
-        <VChart :option="chartOption" autoresize style="height: 340px" />
+        <h2>Receita vs. despesa por mês
+          <span class="range" v-if="data.months.length > 1">
+            <select v-model="rangeFrom" aria-label="De">
+              <option :value="null">início</option>
+              <option v-for="m in data.months" :key="m.month" :value="m.month">{{ monthLabel(m.month) }}</option>
+            </select>
+            <span class="dash">—</span>
+            <select v-model="rangeTo" aria-label="Até">
+              <option :value="null">fim</option>
+              <option v-for="m in data.months" :key="m.month" :value="m.month">{{ monthLabel(m.month) }}</option>
+            </select>
+          </span>
+        </h2>
+        <p class="hint">Despesa = cartão (por data da compra) + gastos fixos. Use o intervalo para focar em um período.</p>
+        <VChart v-if="viewMonths.length" :option="chartOption" autoresize style="height: 340px" />
+        <p v-else class="hint">Intervalo vazio — ajuste De/Até.</p>
       </div>
 
       <!-- Saldo mensal -->
       <div class="card">
         <h2>Saldo mensal <span class="hint inline">receita − despesa</span></h2>
         <div class="saldo">
-          <div class="scol" v-for="m in data.months" :key="m.month">
+          <div class="scol" v-for="m in viewMonths" :key="m.month">
             <div class="sbarwrap">
               <div v-if="n(m.balance) >= 0" class="sbar pos" :style="{ height: (Math.abs(n(m.balance)) / saldoMax * 46) + 'px' }"></div>
               <div class="szero"></div>
@@ -221,6 +270,37 @@ const chartOption = computed(() => {
               {{ n(m.balance) >= 0 ? "+" : "−" }}{{ Math.round(Math.abs(n(m.balance)) / 100) / 10 }}k
             </span>
             <span class="smth">{{ monthLabel(m.month).split("/")[0] }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Teto do cartão -->
+      <div class="card" v-if="hasCeiling">
+        <h2>Teto do cartão <span class="hint inline">duas simulações — clique para comparar</span></h2>
+        <div class="ceil-sims">
+          <button type="button" class="sim" :class="{ on: ceilBase === 'all' }" @click="ceilBase = 'all'">
+            <span class="sim-l">Renda recorrente</span>
+            <span class="sim-v">{{ brl(data.card_ceiling) }}</span>
+            <span class="sim-s">{{ brl(data.salary_month) }} − fixos {{ brl(data.fixed_month) }}</span>
+          </button>
+          <button type="button" class="sim" :class="{ on: ceilBase === 'salary' }" @click="ceilBase = 'salary'">
+            <span class="sim-l">Só salário</span>
+            <span class="sim-v">{{ brl(data.card_ceiling_salary) }}</span>
+            <span class="sim-s">{{ brl(data.salary_only) }} − fixos {{ brl(data.fixed_month) }}</span>
+          </button>
+        </div>
+        <p class="hint">
+          {{ monthsWithin.within }}/{{ monthsWithin.total }} meses dentro do teto
+          ({{ ceilBase === 'all' ? 'renda recorrente' : 'só salário' }}). Barra vermelha = estourou.
+        </p>
+        <div class="ceil">
+          <div class="crow" v-for="m in viewMonths" :key="m.month">
+            <span class="cmth">{{ monthLabel(m.month) }}</span>
+            <div class="ctrack">
+              <div class="cfill" :class="n(m.card) > ceiling ? 'over' : 'ok'" :style="{ width: Math.min(n(m.card) / ceilingScaleMax * 100, 100) + '%' }"></div>
+              <div class="cmark" :style="{ left: (ceiling / ceilingScaleMax * 100) + '%' }" title="Teto"></div>
+            </div>
+            <span class="camt" :class="n(m.card) > ceiling ? 'over' : 'ok'">{{ brl(m.card) }}</span>
           </div>
         </div>
       </div>
@@ -257,7 +337,7 @@ const chartOption = computed(() => {
 </template>
 
 <style scoped>
-.page { padding: 1.75rem 2rem 4rem; max-width: 1080px; margin: 0 auto; color: var(--clr-text-primary); font-variant-numeric: tabular-nums; }
+.page { padding: 1.75rem 2rem 4rem; max-width: 1320px; margin: 0 auto; color: var(--clr-text-primary); font-variant-numeric: tabular-nums; }
 .top { margin-bottom: 1.25rem; display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 .yearfilter { display: flex; align-items: center; gap: .5rem; font-size: 12px; font-weight: 600; color: var(--clr-text-secondary); }
 .yearfilter select {
@@ -273,7 +353,7 @@ h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 6px;
 .state { padding: 2rem 0; color: var(--clr-text-secondary); font-size: 14px; }
 .state.err { color: var(--clr-negative); }
 
-.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: .7rem; margin-bottom: 1rem; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(172px, 1fr)); gap: .7rem; margin-bottom: 1rem; }
 .kpi { background: var(--clr-surface); border: 1px solid var(--clr-stroke); border-radius: var(--radius-lg); padding: .9rem 1rem; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: .15rem; }
 .kpi .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--clr-text-muted); }
 .kpi .val { font-size: 1.4rem; font-weight: 780; letter-spacing: -.02em; }
@@ -283,7 +363,15 @@ h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 6px;
 .kpi .sub2.warn { color: var(--clr-amber); }
 
 .card { background: var(--clr-surface); border: 1px solid var(--clr-stroke); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 1.2rem 1.3rem; margin-bottom: 1rem; }
-.card h2 { font-size: .95rem; font-weight: 700; letter-spacing: -.01em; margin: 0 0 .1rem; }
+.card h2 { font-size: .95rem; font-weight: 700; letter-spacing: -.01em; margin: 0 0 .1rem; display: flex; align-items: center; justify-content: space-between; gap: .6rem; flex-wrap: wrap; }
+.range { display: flex; align-items: center; gap: .4rem; }
+.range .dash { color: var(--clr-text-muted); }
+.range select {
+  font-family: inherit; font-size: 12px; font-weight: 600; padding: 4px 8px;
+  border: 1px solid var(--clr-stroke); border-radius: var(--radius-md);
+  background: var(--clr-surface); color: var(--clr-text-primary); cursor: pointer; outline: none;
+}
+.range select:focus { border-color: var(--clr-accent); }
 .card .hint { font-size: .78rem; color: var(--clr-text-muted); margin: 0 0 .9rem; }
 .card .hint.inline { margin: 0 0 0 .5rem; font-weight: 500; }
 
@@ -300,6 +388,34 @@ h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 6px;
 .sval { font-size: 10.5px; font-weight: 700; }
 .sval.pos { color: var(--clr-positive); } .sval.neg { color: var(--clr-negative); }
 .smth { font-size: 10.5px; color: var(--clr-text-muted); }
+
+/* card ceiling */
+.ceil-sims { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; margin-bottom: 1rem; }
+.sim {
+  text-align: left; font-family: inherit; cursor: pointer;
+  display: flex; flex-direction: column; gap: .15rem;
+  padding: .8rem .9rem; border-radius: 12px;
+  border: 1.5px solid var(--clr-stroke); background: var(--clr-surface); color: var(--clr-text-primary);
+  transition: border-color .1s, background .1s;
+}
+.sim:hover { border-color: var(--clr-accent); }
+.sim.on { border-color: var(--clr-accent); background: var(--clr-accent-light); }
+.sim-l { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--clr-text-muted); }
+.sim.on .sim-l { color: var(--clr-accent); }
+.sim-v { font-size: 1.35rem; font-weight: 780; letter-spacing: -.02em; }
+.sim-s { font-size: 11px; color: var(--clr-text-muted); }
+
+.ceil { display: flex; flex-direction: column; gap: .5rem; }
+.crow { display: grid; grid-template-columns: 52px 1fr 92px; align-items: center; gap: 12px; }
+.cmth { font-size: 12px; color: var(--clr-text-muted); font-weight: 600; }
+.ctrack { position: relative; height: 12px; border-radius: 6px; background: var(--clr-track); overflow: hidden; }
+.cfill { position: absolute; left: 0; top: 0; height: 100%; border-radius: 6px; }
+.cfill.ok { background: var(--clr-positive); }
+.cfill.over { background: var(--clr-negative); }
+.cmark { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--clr-text-primary); opacity: .55; }
+.camt { font-size: 12.5px; font-weight: 700; text-align: right; }
+.camt.ok { color: var(--clr-text-primary); }
+.camt.over { color: var(--clr-negative); }
 
 /* ranking */
 .bars { display: flex; flex-direction: column; gap: .5rem; }
@@ -318,5 +434,5 @@ h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 6px;
 .dotc { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .dotc.fix { background: var(--clr-accent); } .dotc.var { background: var(--clr-amber); }
 
-@media (max-width: 760px) { .kpis { grid-template-columns: repeat(2, 1fr); } .row2 { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .row2 { grid-template-columns: 1fr; } }
 </style>

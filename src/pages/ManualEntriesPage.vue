@@ -16,6 +16,7 @@ const amount = ref("");
 const category = ref("");
 const month = ref(currentMonth());
 const recurring = ref(true);
+const isSalary = ref(true); // income only: salary vs bonus
 const formError = ref<string | null>(null);
 const editingId = ref<string | null>(null);
 
@@ -62,6 +63,7 @@ function resetForm(): void {
   category.value = "";
   month.value = currentMonth();
   recurring.value = true;
+  isSalary.value = true;
   formError.value = null;
 }
 
@@ -73,6 +75,7 @@ function startEdit(e: ManualEntry): void {
   category.value = e.category;
   month.value = e.month;
   recurring.value = e.recurring;
+  isSalary.value = e.is_salary;
   formError.value = null;
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -91,6 +94,7 @@ async function submit(): Promise<void> {
     category: category.value.trim(),
     month: month.value,
     recurring: recurring.value,
+    isSalary: kind.value === "income" ? isSalary.value : true,
   };
 
   try {
@@ -135,6 +139,13 @@ async function remove(id: string): Promise<void> {
           :class="['kind-btn', { active: kind === 'expense', expense: true }]"
           @click="kind = 'expense'"
         >↓ Despesa</button>
+      </div>
+
+      <div v-if="kind === 'income'" class="salbonus">
+        <span class="sb-label">Tipo de receita:</span>
+        <button type="button" :class="['sb-btn', { active: isSalary }]" @click="isSalary = true">Salário</button>
+        <button type="button" :class="['sb-btn', { active: !isSalary }]" @click="isSalary = false">Bônus</button>
+        <span class="sb-hint">só o salário conta no teto do cartão</span>
       </div>
 
       <div class="form-grid">
@@ -195,6 +206,7 @@ async function remove(id: string): Promise<void> {
               <span class="entry-desc">{{ e.description }}</span>
               <span class="entry-meta">
                 <span class="chip">{{ e.category }}</span>
+                <span class="badge" :class="e.is_salary ? 'sal' : 'bon'">{{ e.is_salary ? "salário" : "bônus" }}</span>
                 <span class="badge">{{ e.recurring ? "fixo · todo mês" : formatMonth(e.month) }}</span>
               </span>
             </div>
@@ -236,7 +248,7 @@ async function remove(id: string): Promise<void> {
 </template>
 
 <style scoped>
-.page { padding: 1.5rem 2rem; max-width: 1200px; margin: 0 auto; }
+.page { padding: 1.5rem 2rem; max-width: 1320px; margin: 0 auto; }
 .page-header { margin-bottom: 1.25rem; }
 .page-title { display: flex; flex-direction: column; gap: 0.25rem; }
 h1 { font-size: 1.25rem; font-weight: 600; color: var(--clr-text-primary); letter-spacing: -0.01em; }
@@ -262,6 +274,16 @@ h2 { font-size: 0.9375rem; font-weight: 600; color: var(--clr-text-primary); mar
 .kind-btn:hover { background: var(--clr-surface-alt); }
 .kind-btn.income.active { background: var(--clr-positive); color: #fff; }
 .kind-btn.expense.active { background: var(--clr-negative); color: #fff; }
+
+.salbonus { display: flex; align-items: center; gap: .5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.sb-label { font-size: 0.8125rem; font-weight: 600; color: var(--clr-text-secondary); }
+.sb-btn {
+  font-family: inherit; font-size: 0.8125rem; font-weight: 600; padding: 4px 12px;
+  border: 1px solid var(--clr-stroke); border-radius: var(--radius-md);
+  background: var(--clr-surface); color: var(--clr-text-secondary); cursor: pointer;
+}
+.sb-btn.active { background: var(--clr-accent); color: #fff; border-color: var(--clr-accent); }
+.sb-hint { font-size: 0.72rem; color: var(--clr-text-muted); }
 
 .form-grid { display: grid; grid-template-columns: 2fr 1fr 1.5fr 1fr; gap: 0.75rem 1rem; align-items: end; }
 .field { display: flex; flex-direction: column; gap: 0.3rem; }
@@ -301,6 +323,8 @@ h2 { font-size: 0.9375rem; font-weight: 600; color: var(--clr-text-primary); mar
 .entry-meta { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
 .chip { font-size: 0.6875rem; background: var(--clr-accent-light); color: var(--clr-accent); padding: 0.1rem 0.5rem; border-radius: 100px; font-weight: 600; }
 .badge { font-size: 0.6875rem; color: var(--clr-text-muted); }
+.badge.sal { color: var(--clr-accent); font-weight: 700; }
+.badge.bon { color: var(--clr-amber); font-weight: 700; }
 .entry-amount { font-size: 0.9375rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .entry-actions { display: flex; gap: 0.15rem; }
 .icon-btn { background: none; border: none; cursor: pointer; color: var(--clr-text-muted); font-size: 0.875rem; padding: 0.25rem 0.4rem; border-radius: var(--radius-sm); line-height: 1; }
