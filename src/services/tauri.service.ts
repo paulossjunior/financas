@@ -375,3 +375,21 @@ export async function listFixedExpenses(month: string): Promise<DerivedFixed[]> 
     throw new Error(mapError(String(e)));
   }
 }
+
+/** Set (or clear with null) the user's editable base value for a recurring category. */
+export async function setRecurringBase(category: string, baseAmount: string | null): Promise<void> {
+  try {
+    await invoke<void>("set_recurring_base", { category, baseAmount });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+/** All distinct category names in use (config + card + bank + manual + payslip). */
+export async function listAllCategories(): Promise<string[]> {
+  try {
+    return await invoke<string[]>("list_all_categories");
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}

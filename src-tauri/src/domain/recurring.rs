@@ -30,11 +30,15 @@ pub struct RecurringCategory {
     pub start_month: Option<String>,
     #[serde(default)]
     pub end_month: Option<String>,
+    /// User-set base value for months without imported data. Overrides the computed
+    /// average baseline; realized imported data still wins over it.
+    #[serde(default)]
+    pub base_amount: Option<Decimal>,
 }
 
 impl RecurringCategory {
     pub fn ongoing(category: impl Into<String>) -> Self {
-        Self { category: category.into(), start_month: None, end_month: None }
+        Self { category: category.into(), start_month: None, end_month: None, base_amount: None }
     }
 
     /// Whether this recurrence is in effect during `month` ("YYYY-MM").
@@ -137,7 +141,8 @@ pub fn derive_month(month: &str, cats: &[RecurringCategory], obs: &[Observation]
     for cat in cats.iter().filter(|c| c.active_in(month)) {
         if let Some((amount, origin)) = realized_for(month, &cat.category, obs) {
             out.push(DerivedFixed { category: cat.category.clone(), month: month.to_string(), amount, origin, is_baseline: false });
-        } else if let Some(amount) = baseline(cat, month, obs, BASELINE_MONTHS) {
+        } else if let Some(amount) = cat.base_amount.or_else(|| baseline(cat, month, obs, BASELINE_MONTHS)) {
+            // User-set base value takes precedence over the computed average; both are estimates.
             out.push(DerivedFixed { category: cat.category.clone(), month: month.to_string(), amount, origin: FixedOrigin::Baseline, is_baseline: true });
         }
         // else: recurring category with no realized data and no history → nothing this month.
@@ -235,7 +240,7 @@ mod tests {
 
     #[test]
     fn active_in_respects_vigencia() {
-        let c = RecurringCategory { category: "Psicólogo".into(), start_month: Some("2026-01".into()), end_month: Some("2026-03".into()) };
+        let c = RecurringCategory { category: "Psicólogo".into(), start_month: Some("2026-01".into()), end_month: Some("2026-03".into()), base_amount: None };
         assert!(!c.active_in("2025-12"));
         assert!(c.active_in("2026-01"));
         assert!(c.active_in("2026-03"));
@@ -313,6 +318,32 @@ mod tests {
     }
 
     #[test]
+    fn user_base_amount_overrides_computed_baseline() {
+        let mut cat = RecurringCategory::ongoing("Aluguel");
+        cat.base_amount = Some(dec!(2500));
+        let cats = vec![cat];
+        // history would average to 2000, but the user base (2500) wins for an unimported month
+        let o = vec![
+            obs("2026-04", "Aluguel", dec!(2000), FixedOrigin::Extrato),
+            obs("2026-05", "Aluguel", dec!(2000), FixedOrigin::Extrato),
+        ];
+        let d = derive_month("2026-06", &cats, &o);
+        assert_eq!(d[0].amount, dec!(2500));
+        assert!(d[0].is_baseline);
+    }
+
+    #[test]
+    fn realized_still_wins_over_user_base_amount() {
+        let mut cat = RecurringCategory::ongoing("Aluguel");
+        cat.base_amount = Some(dec!(2500));
+        let cats = vec![cat];
+        let o = vec![obs("2026-06", "Aluguel", dec!(2000), FixedOrigin::Extrato)];
+        let d = derive_month("2026-06", &cats, &o);
+        assert_eq!(d[0].amount, dec!(2000));
+        assert!(!d[0].is_baseline);
+    }
+
+    #[test]
     fn baseline_none_without_history() {
         let cats = RecurringCategory::ongoing("Luz");
         assert_eq!(baseline(&cats, "2026-06", &[], 3), None);
@@ -327,7 +358,7 @@ mod tests {
 
     #[test]
     fn finite_recurrence_dropped_after_end() {
-        let cats = vec![RecurringCategory { category: "Psicólogo".into(), start_month: Some("2026-01".into()), end_month: Some("2026-03".into()) }];
+        let cats = vec![RecurringCategory { category: "Psicólogo".into(), start_month: Some("2026-01".into()), end_month: Some("2026-03".into()), base_amount: None }];
         let o = vec![obs("2026-02", "Psicólogo", dec!(400), FixedOrigin::Extrato)];
         // In vigência
         assert_eq!(derive_month("2026-02", &cats, &o).len(), 1);

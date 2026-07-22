@@ -166,6 +166,16 @@ impl Database {
                 return Err(msg);
             }
         }
+        // Migrate recurring_categories created before base_amount existed.
+        if let Err(e) = self
+            .conn
+            .execute("ALTER TABLE recurring_categories ADD COLUMN base_amount TEXT", [])
+        {
+            let msg = e.to_string();
+            if !msg.contains("duplicate column") {
+                return Err(msg);
+            }
+        }
         // Salary now comes from the payslip; manual income is always EXTRA (bolsa, rendimentos).
         // Normalize any legacy salary-flagged income so it is never superseded by a payslip.
         self.conn
@@ -670,7 +680,7 @@ impl Database {
     pub fn load_recurring_categories(&self) -> Result<Vec<RecurringCategory>, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT category, start_month, end_month FROM recurring_categories ORDER BY category")
+            .prepare("SELECT category, start_month, end_month, base_amount FROM recurring_categories ORDER BY category")
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| {
@@ -678,6 +688,9 @@ impl Database {
                     category: r.get(0)?,
                     start_month: r.get(1)?,
                     end_month: r.get(2)?,
+                    base_amount: r
+                        .get::<_, Option<String>>(3)?
+                        .and_then(|s| Decimal::from_str(&s).ok()),
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -711,6 +724,40 @@ impl Database {
                 .map_err(|e| e.to_string())?;
         }
         Ok(())
+    }
+
+    /// Set (or clear, with None) the user's base value for a recurring category.
+    pub fn set_recurring_base(&mut self, category: &str, amount: Option<&str>) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE recurring_categories SET base_amount = ?1 WHERE category = ?2",
+                params![amount, category],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Distinct category names in use anywhere: config rules, card transactions,
+    /// bank entries, manual entries and payslip deduction categories.
+    pub fn all_category_names(&self) -> Result<Vec<String>, String> {
+        let sql = "
+            SELECT category FROM category_rules
+            UNION SELECT category FROM transactions
+            UNION SELECT category FROM bank_entries
+            UNION SELECT category FROM manual_entries
+            ORDER BY category";
+        let mut stmt = self.conn.prepare(sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for r in rows {
+            let c: String = r.map_err(|e| e.to_string())?;
+            if !c.trim().is_empty() {
+                out.push(c);
+            }
+        }
+        Ok(out)
     }
 
     pub fn load_dismissed_suggestions(&self) -> Result<Vec<String>, String> {

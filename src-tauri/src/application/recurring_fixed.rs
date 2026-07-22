@@ -53,8 +53,10 @@ pub struct RecurringCategoryInfo {
     pub category: String,
     pub start_month: Option<String>,
     pub end_month: Option<String>,
-    /// Average of the last months (baseline). None if no history.
+    /// Computed average of the last months (data-driven baseline). None if no history.
     pub baseline: Option<String>,
+    /// User-set base value override (editable), if any.
+    pub base_amount: Option<String>,
     /// Dominant origin of the most recent realized month, if any.
     pub origin: Option<FixedOrigin>,
     /// True when monthly amounts vary meaningfully (show "média/varia" vs "valor fixo").
@@ -80,6 +82,7 @@ pub fn recurring_category_infos(cats: &[RecurringCategory], obs: &[Observation])
                 start_month: c.start_month.clone(),
                 end_month: c.end_month.clone(),
                 baseline: base.map(|d| d.to_string()),
+                base_amount: c.base_amount.map(|d| d.to_string()),
                 origin,
                 varies,
             }
