@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Movimentações page (Extratos & Faturas) — combined bank + card overview with monthly KPIs and a bar chart.
 import { onMounted, ref, computed } from "vue";
 import VChart from "vue-echarts";
 import { use } from "echarts/core";

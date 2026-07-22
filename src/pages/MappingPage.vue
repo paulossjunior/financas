@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Mapping page — queue of uncategorized "Outros" card charges + extrato entries, grouped by merchant for one-click categorization.
 import { onMounted, ref, reactive, computed, watch } from "vue";
 import { useInvoiceStore } from "@/stores/invoice.store";
 import { useSettingsStore } from "@/stores/settings.store";

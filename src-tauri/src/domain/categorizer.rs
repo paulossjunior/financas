@@ -1,3 +1,6 @@
+//! Domain: keyword → category matching. A [`Categorizer`] holds priority-ordered
+//! [`CategoryRule`]s and classifies a transaction description into a category.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

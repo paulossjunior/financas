@@ -1,3 +1,5 @@
+//! Commands: read and persist the app [`AppConfig`] at the Tauri boundary.
+
 use std::sync::Mutex;
 use tauri::State;
 

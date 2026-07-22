@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Extrato page — import a bank statement, preview/categorize its entries, and list saved bank entries.
 import { onMounted, ref, computed } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import {

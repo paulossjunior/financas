@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Dashboard chart — projected upcoming card installments (forecast) as bars, with optional compact/table modes.
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import VChart from "vue-echarts";
 import { use } from "echarts/core";

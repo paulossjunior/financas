@@ -1,3 +1,4 @@
+// Utility to detect when a keyword already belongs to another category group (merchant-in-multiple-categories conflict).
 import type { CategoryGroup } from "@/types/api.types";
 
 export function detectConflict(

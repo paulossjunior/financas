@@ -1,3 +1,4 @@
+// Pinia store for invoices, transactions, manual entries, dashboard data, and the active month filter.
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { DashboardData, DashboardFilter, InvoiceInfo, ImportResult, MonthGroup, ManualEntry, Transaction } from "@/types/api.types";

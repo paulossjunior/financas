@@ -1,3 +1,6 @@
+//! Commands: recurring categories and derived fixed expenses at the Tauri boundary —
+//! list, configure, suggest and dismiss.
+
 use tauri::State;
 
 use crate::application::recurring_fixed::{

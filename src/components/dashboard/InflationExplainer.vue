@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Dashboard plain-language explainer of personal inflation relative to income/expense.
 import { computed } from "vue";
 import type { InflationData } from "@/types/api.types";
 import { buildExplainer } from "@/utils/inflation-explainer";

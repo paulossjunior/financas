@@ -1,3 +1,6 @@
+//! Infrastructure: read `.xlsx` invoice files (calamine), transparently decrypting
+//! password-protected workbooks (office-crypto) into raw rows.
+
 use calamine::{open_workbook_auto, Data, Range, Reader, Xlsx};
 use std::io::Cursor;
 use std::path::Path;

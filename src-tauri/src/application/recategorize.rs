@@ -1,3 +1,6 @@
+//! Application use-case: re-run categorization over every stored transaction using
+//! the current keyword rules and per-transaction overrides.
+
 use crate::domain::AppConfig;
 use super::store::SharedStore;
 

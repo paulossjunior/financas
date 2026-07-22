@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Settings list of category groups; add/rename/delete groups and edit their keywords.
 import { computed } from "vue";
 import type { CategoryGroup } from "@/types/api.types";
 import CategoryGroupEditor from "./CategoryGroupEditor.vue";

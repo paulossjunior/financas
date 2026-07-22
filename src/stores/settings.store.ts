@@ -1,3 +1,4 @@
+// Pinia store for category groups/rules and recurring-unmapped state, persisted via app config.
 import { ref, computed } from "vue";
 import { defineStore } from "pinia";
 import { getConfig, saveConfig, recategorizeInvoices } from "@/services/tauri.service";

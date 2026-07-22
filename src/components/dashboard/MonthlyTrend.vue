@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Dashboard line chart of the monthly income/expense trend over time.
 import { computed } from "vue";
 import VChart from "vue-echarts";
 import { use } from "echarts/core";

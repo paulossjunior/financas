@@ -1,3 +1,6 @@
+//! Commands: month dashboard and annual summary, plus invoice listing/removal, at
+//! the Tauri boundary.
+
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};

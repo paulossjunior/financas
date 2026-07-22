@@ -1,3 +1,5 @@
+//! Commands: list all imported transactions at the Tauri boundary.
+
 use tauri::State;
 
 use crate::application::store::SharedStore;

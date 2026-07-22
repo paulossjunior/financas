@@ -1,3 +1,6 @@
+//! Domain: single-month aggregation. Folds invoices, manual entries and payslips
+//! into the [`DashboardData`] DTO (totals, per-category breakdown, forecast).
+
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};

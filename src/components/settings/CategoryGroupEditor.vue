@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Settings editor for one category group — add/remove keywords with conflict detection.
 import { ref, computed } from "vue";
 import { detectConflict } from "@/utils/category-conflict";
 import type { CategoryGroup } from "@/types/api.types";

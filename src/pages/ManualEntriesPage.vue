@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Manual entries page (Fixos & Renda) — add/edit fixed expenses and extra income (salary is read-only from the payslip).
 import { onMounted, ref, computed, watch } from "vue";
 import { useInvoiceStore } from "@/stores/invoice.store";
 import { useSettingsStore } from "@/stores/settings.store";

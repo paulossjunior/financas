@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Year page — annual summary with per-month charts, inflation, and a printable report.
 import { onMounted, onUnmounted, ref, computed } from "vue";
 import VChart from "vue-echarts";
 import { use } from "echarts/core";

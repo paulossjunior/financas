@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Dropdown to override (or clear the override on) a single transaction's category.
 const props = defineProps<{
   transactionId: string;
   currentCategory: string;

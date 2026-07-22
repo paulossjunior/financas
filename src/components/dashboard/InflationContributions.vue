@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Dashboard breakdown of which categories contribute most to personal inflation.
 import { computed, onMounted, ref } from "vue";
 import { getPersonalInflationDetail } from "@/services/tauri.service";
 import type { InflationContribution, PersonalInflationDetail } from "@/types/api.types";

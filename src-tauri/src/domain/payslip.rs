@@ -1,3 +1,6 @@
+//! Domain: SouGov.br payslip parsing. Turns extracted PDF text into a [`Payslip`]
+//! of classified [`PayslipItem`]s (rendimentos/descontos), with advance reconciliation.
+
 use regex::Regex;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;

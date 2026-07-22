@@ -1,3 +1,6 @@
+//! Commands: category rules (mapeamento) at the Tauri boundary — add keywords,
+//! override or clear a transaction's category, and trigger a recategorize pass.
+
 use std::sync::Mutex;
 use tauri::State;
 

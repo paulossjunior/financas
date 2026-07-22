@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Dashboard list of top transactions, each with a per-transaction category override.
 import type { TransactionSummary } from "@/types/api.types";
 import MoneyAmount from "@/components/shared/MoneyAmount.vue";
 import TransactionCategoryOverride from "@/components/settings/TransactionCategoryOverride.vue";

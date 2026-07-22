@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// History row rendering one imported invoice file, with a remove action.
 import type { InvoiceInfo } from "@/types/api.types";
 
 const props = defineProps<{ invoice: InvoiceInfo }>();

@@ -1,3 +1,6 @@
+//! Application layer: [`InvoiceStore`], the in-memory store of imported invoices
+//! (keyed by UUID), shared behind a mutex as `SharedStore`.
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;

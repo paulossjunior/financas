@@ -1,3 +1,6 @@
+//! Infrastructure: map parsed BTG sheet rows (statement/invoice) into domain
+//! [`Transaction`]s, categorizing each and collecting parse warnings.
+
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use std::collections::HashMap;

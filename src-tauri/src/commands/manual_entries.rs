@@ -1,3 +1,6 @@
+//! Commands: manual entries (fixed bills / income) at the Tauri boundary —
+//! add, list, update and remove.
+
 use std::str::FromStr;
 use std::sync::Mutex;
 

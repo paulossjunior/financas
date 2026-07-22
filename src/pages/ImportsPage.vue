@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Imports page — tab shell for the Extratos & Faturas, Faturas, Extrato, and Contracheque views.
 import { ref } from "vue";
 import MovimentacoesPage from "@/pages/MovimentacoesPage.vue";
 import HistoryPage from "@/pages/HistoryPage.vue";

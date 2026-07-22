@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Dashboard horizontal bar chart ranking categories by net total.
 import { computed } from "vue";
 import VChart from "vue-echarts";
 import { use } from "echarts/core";
