@@ -7,8 +7,10 @@ import {
   setCategoryRecurring,
   recurringSuggestions,
   dismissRecurringSuggestion,
+  listAllCategories,
+  setRecurringBase,
 } from "@/services/tauri.service";
-import type { RecurringCategoryInfo, RecurringSuggestion } from "@/types/api.types";
+import type { RecurringCategoryInfo, RecurringSuggestion, CategoryGroup } from "@/types/api.types";
 import MappingPage from "@/pages/MappingPage.vue";
 
 const settings = useSettingsStore();
@@ -19,6 +21,8 @@ const activeTab = ref<Tab>("regras");
 
 const recInfos = ref<RecurringCategoryInfo[]>([]);
 const suggestions = ref<RecurringSuggestion[]>([]);
+// Every category name actually in use (card, bank, manual, payslip, rules).
+const allCategoryNames = ref<string[]>([]);
 
 // filters
 const search = ref("");
@@ -39,12 +43,28 @@ function isRecurring(name: string): boolean {
   return recMap.value.has(name);
 }
 
+// ── keyword-rule group lookup by category name (undefined = data-only category) ──
+const groupMap = computed(() => {
+  const m = new Map<string, CategoryGroup>();
+  for (const g of settings.categoryGroups) m.set(g.name, g);
+  return m;
+});
+
+// ── row source: UNION of every in-use category and every configured group,
+//    deduped by name and sorted alphabetically (pt-BR) ──
+const allNames = computed(() => {
+  const names = new Set<string>();
+  for (const n of allCategoryNames.value) names.add(n);
+  for (const g of settings.categoryGroups) names.add(g.name);
+  return Array.from(names).sort((a, b) => a.localeCompare(b, "pt-BR"));
+});
+
 // ── filtered rows ──
-const filteredGroups = computed(() => {
+const filteredCategories = computed(() => {
   const q = search.value.trim().toLowerCase();
-  return settings.categoryGroups.filter((g) => {
-    if (q && !g.name.toLowerCase().includes(q)) return false;
-    if (onlyRecurring.value && !isRecurring(g.name)) return false;
+  return allNames.value.filter((name) => {
+    if (q && !name.toLowerCase().includes(q)) return false;
+    if (onlyRecurring.value && !isRecurring(name)) return false;
     return true;
   });
 });
@@ -99,7 +119,42 @@ function isFinite_(info: RecurringCategoryInfo): boolean {
 }
 
 function baselineNote(info: RecurringCategoryInfo): string {
+  if (info.base_amount) return "valor base (você)";
   return info.varies ? "média 3m · varia" : "valor fixo";
+}
+
+// ── editable "Valor base" (user override) ──
+/** Decimal string → pt-BR number without currency symbol (for prefilling the input). */
+function fmtNum(v: string): string {
+  const n = parseFloat(v);
+  if (!Number.isFinite(n)) return "";
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+/** Input value: the user override (pt-BR formatted) when set; empty otherwise. */
+function baseInputValue(info: RecurringCategoryInfo): string {
+  return info.base_amount ? fmtNum(info.base_amount) : "";
+}
+/** Placeholder = the computed baseline (BRL) so the current auto value stays visible. */
+function basePlaceholder(info: RecurringCategoryInfo): string {
+  return info.baseline ? fmtBRL(info.baseline) : "valor base…";
+}
+/** Convert a pt-BR money input ("1.234,56" / "1234,56" / "1234.56") to a plain decimal
+ *  string like "1234.56"; empty input → null (clears the override). */
+function parsePtBrDecimal(raw: string): string | null {
+  const s = raw.trim();
+  if (!s) return null;
+  let cleaned = s.replace(/[^\d.,-]/g, "");
+  if (!cleaned) return null;
+  if (cleaned.includes(",")) {
+    // pt-BR: comma = decimal separator, dots = thousands separators.
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  } else if (/^-?\d{1,3}(\.\d{3})+$/.test(cleaned)) {
+    // Dots used purely as thousands separators (e.g. "1.234").
+    cleaned = cleaned.replace(/\./g, "");
+  }
+  const n = parseFloat(cleaned);
+  if (!Number.isFinite(n)) return null;
+  return String(n);
 }
 
 const ORIGIN_LABEL: Record<string, string> = {
@@ -125,15 +180,25 @@ async function loadRecurring(): Promise<void> {
   }
 }
 
+/** Load every distinct category name in use (union source for the table). */
+async function loadAllCats(): Promise<void> {
+  try {
+    allCategoryNames.value = await listAllCategories();
+  } catch {
+    // Backend may have no data yet — fall back to configured groups only.
+    allCategoryNames.value = [];
+  }
+}
+
 /** Persist local category/keyword edits, then refresh derived state. */
 async function persist(): Promise<void> {
   await settings.saveCategories();
-  await Promise.all([loadRecurring(), store.loadAllTransactions().catch(() => {})]);
+  await Promise.all([loadRecurring(), loadAllCats(), store.loadAllTransactions().catch(() => {})]);
 }
 
 onMounted(async () => {
   await settings.loadConfig();
-  await Promise.all([loadRecurring(), store.loadAllTransactions().catch(() => {})]);
+  await Promise.all([loadRecurring(), loadAllCats(), store.loadAllTransactions().catch(() => {})]);
 });
 
 // ── recurring toggle + vigência ──
@@ -149,6 +214,13 @@ async function onVigChange(name: string, which: "start" | "end", e: Event): Prom
   const start = which === "start" ? val : info?.start_month ?? null;
   const end = which === "end" ? val : info?.end_month ?? null;
   await setCategoryRecurring(name, true, start, end);
+  await loadRecurring();
+}
+
+// ── editable base value (commit on blur/Enter) ──
+async function onBaseChange(name: string, e: Event): Promise<void> {
+  const parsed = parsePtBrDecimal((e.target as HTMLInputElement).value);
+  await setRecurringBase(name, parsed);
   await loadRecurring();
 }
 
@@ -172,6 +244,9 @@ async function commitAdd(name: string): Promise<void> {
   addingFor.value = null;
   newKw.value = "";
   if (!kw) return;
+  // Data-only category (no keyword group yet): create the group first so
+  // addKeyword — which only updates existing groups — actually creates a rule.
+  if (!groupMap.value.has(name)) settings.addCategory(name);
   settings.addKeyword(name, kw);
   await persist();
 }
@@ -220,7 +295,7 @@ async function onDelete(name: string): Promise<void> {
         role="tab"
         @click="activeTab = 'regras'"
       >
-        Categorias & Regras <span class="c">{{ settings.categoryGroups.length }}</span>
+        Categorias & Regras <span class="c">{{ allNames.length }}</span>
       </button>
       <button
         class="tab"
@@ -272,46 +347,55 @@ async function onDelete(name: string): Promise<void> {
               <th>Categoria</th>
               <th class="hide">Palavras-chave</th>
               <th class="c">Recorrente</th>
-              <th class="r">Baseline /mês</th>
+              <th class="r">Valor base /mês</th>
               <th>Origem</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-if="!filteredGroups.length">
+            <tr v-if="!filteredCategories.length">
               <td colspan="5" class="empty">Nenhuma categoria encontrada.</td>
             </tr>
-            <tr v-for="g in filteredGroups" :key="g.name">
+            <tr v-for="name in filteredCategories" :key="name">
               <!-- Categoria -->
               <td class="cat">
                 <div class="cat-cell">
-                  <input
-                    class="cat-name"
-                    :value="g.name"
-                    title="Renomear categoria"
-                    @change="onRename(g.name, $event)"
-                  />
-                  <button class="del" title="Excluir categoria" @click="onDelete(g.name)">✕</button>
+                  <template v-if="groupMap.get(name)">
+                    <input
+                      class="cat-name"
+                      :value="name"
+                      title="Renomear categoria"
+                      @change="onRename(name, $event)"
+                    />
+                    <button class="del" title="Excluir categoria" @click="onDelete(name)">✕</button>
+                  </template>
+                  <span
+                    v-else
+                    class="cat-name-static"
+                    title="Categoria em uso — ainda sem regra de palavra-chave"
+                  >
+                    {{ name }}
+                  </span>
                 </div>
               </td>
 
               <!-- Palavras-chave -->
               <td class="hide">
                 <div class="kw">
-                  <span v-for="kw in g.keywords" :key="kw" class="chip-kw">
+                  <span v-for="kw in (groupMap.get(name)?.keywords ?? [])" :key="kw" class="chip-kw">
                     {{ kw }}
-                    <button class="kw-x" :title="`Remover '${kw}'`" @click="removeKw(g.name, kw)">×</button>
+                    <button class="kw-x" :title="`Remover '${kw}'`" @click="removeKw(name, kw)">×</button>
                   </span>
                   <input
-                    v-if="addingFor === g.name"
+                    v-if="addingFor === name"
                     v-model="newKw"
                     class="kw-add-input"
                     placeholder="palavra-chave…"
                     @vue:mounted="focusEl"
-                    @keyup.enter="commitAdd(g.name)"
+                    @keyup.enter="commitAdd(name)"
                     @keyup.escape="cancelAdd"
-                    @blur="commitAdd(g.name)"
+                    @blur="commitAdd(name)"
                   />
-                  <button v-else class="chip-kw add" title="Adicionar palavra-chave" @click="startAdd(g.name)">
+                  <button v-else class="chip-kw add" title="Adicionar palavra-chave" @click="startAdd(name)">
                     +
                   </button>
                 </div>
@@ -322,19 +406,19 @@ async function onDelete(name: string): Promise<void> {
                 <div class="rec">
                   <button
                     class="track"
-                    :class="{ on: isRecurring(g.name) }"
+                    :class="{ on: isRecurring(name) }"
                     role="switch"
-                    :aria-checked="isRecurring(g.name)"
-                    :title="isRecurring(g.name) ? 'Recorrente — clique para desativar' : 'Marcar como recorrente'"
-                    @click="toggleRecurring(g.name)"
+                    :aria-checked="isRecurring(name)"
+                    :title="isRecurring(name) ? 'Recorrente — clique para desativar' : 'Marcar como recorrente'"
+                    @click="toggleRecurring(name)"
                   >
                     <span class="knob" />
                   </button>
                 </div>
-                <template v-if="recMap.get(g.name) as RecurringCategoryInfo | undefined">
+                <template v-if="recMap.get(name) as RecurringCategoryInfo | undefined">
                   <div class="vig">
-                    <template v-if="isFinite_(recMap.get(g.name)!)">
-                      <b>{{ vigRange(recMap.get(g.name)!) }}</b> · finita
+                    <template v-if="isFinite_(recMap.get(name)!)">
+                      <b>{{ vigRange(recMap.get(name)!) }}</b> · finita
                     </template>
                     <template v-else>contínua</template>
                   </div>
@@ -343,27 +427,42 @@ async function onDelete(name: string): Promise<void> {
                       <span>Início</span>
                       <input
                         type="month"
-                        :value="recMap.get(g.name)!.start_month ?? ''"
-                        @change="onVigChange(g.name, 'start', $event)"
+                        :value="recMap.get(name)!.start_month ?? ''"
+                        @change="onVigChange(name, 'start', $event)"
                       />
                     </label>
                     <label>
                       <span>Fim</span>
                       <input
                         type="month"
-                        :value="recMap.get(g.name)!.end_month ?? ''"
-                        @change="onVigChange(g.name, 'end', $event)"
+                        :value="recMap.get(name)!.end_month ?? ''"
+                        @change="onVigChange(name, 'end', $event)"
                       />
                     </label>
                   </div>
+                  <p class="vig-hint">
+                    Vigência: deixe em branco = sem prazo (conta sempre). Preencha para uma despesa
+                    temporária (ex.: psicólogo jan–mar): conta de Início a Fim e sai sozinha depois.
+                  </p>
                 </template>
               </td>
 
-              <!-- Baseline /mês -->
+              <!-- Valor base /mês -->
               <td class="r">
-                <template v-if="isRecurring(g.name) && recMap.get(g.name)?.baseline">
-                  <span class="val">{{ fmtBRL(recMap.get(g.name)!.baseline!) }}</span>
-                  <div class="note">{{ baselineNote(recMap.get(g.name)!) }}</div>
+                <template v-if="isRecurring(name)">
+                  <div class="base-edit">
+                    <span class="rs">R$</span>
+                    <input
+                      class="base-input"
+                      inputmode="decimal"
+                      :value="baseInputValue(recMap.get(name)!)"
+                      :placeholder="basePlaceholder(recMap.get(name)!)"
+                      title="Valor usado nos meses ainda não importados (teto/projeção). Os dados reais importados sempre prevalecem. Deixe vazio para usar a média automática."
+                      @keyup.enter="($event.target as HTMLInputElement).blur()"
+                      @change="onBaseChange(name, $event)"
+                    />
+                  </div>
+                  <div class="note">{{ baselineNote(recMap.get(name)!) }}</div>
                 </template>
                 <span v-else class="muted">—</span>
               </td>
@@ -371,13 +470,13 @@ async function onDelete(name: string): Promise<void> {
               <!-- Origem -->
               <td>
                 <span
-                  v-if="isRecurring(g.name) && recMap.get(g.name)?.origin"
+                  v-if="isRecurring(name) && recMap.get(name)?.origin"
                   class="tag"
-                  :class="originClass(recMap.get(g.name)!.origin)"
+                  :class="originClass(recMap.get(name)!.origin)"
                 >
-                  {{ ORIGIN_LABEL[recMap.get(g.name)!.origin as string] ?? recMap.get(g.name)!.origin }}
+                  {{ ORIGIN_LABEL[recMap.get(name)!.origin as string] ?? recMap.get(name)!.origin }}
                 </span>
-                <span v-else class="muted">{{ isRecurring(g.name) ? "—" : "variável" }}</span>
+                <span v-else class="muted">{{ isRecurring(name) ? "—" : "variável" }}</span>
               </td>
             </tr>
           </tbody>
@@ -385,8 +484,10 @@ async function onDelete(name: string): Promise<void> {
       </div>
 
       <p class="foot">
-        <b>Recorrente</b> e <b>vigência</b> são editáveis. <b>Baseline</b> e <b>Origem</b> são
-        derivados do histórico real (somente leitura).
+        <b>Recorrente</b>, <b>vigência</b> e <b>valor base</b> são editáveis. O <b>valor base</b> é o
+        valor usado nos meses ainda não importados (teto/projeção do cartão) — assim que os dados
+        reais chegam, eles sempre prevalecem sobre o valor base. Sem valor base, usamos a média
+        automática do histórico. <b>Origem</b> indica de onde veio o histórico (somente leitura).
       </p>
     </div>
 
@@ -473,6 +574,7 @@ tr:last-child td { border-bottom: none; }
 .cat-name { flex: 1; min-width: 0; border: 1px solid transparent; background: transparent; font-size: 13.5px; font-weight: 700; color: var(--ink); padding: 3px 6px; border-radius: 6px; font-family: inherit; }
 .cat-name:hover { border-color: var(--stroke-soft); }
 .cat-name:focus { outline: none; border-color: var(--accent); background: var(--surface); }
+.cat-name-static { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; color: var(--ink); padding: 3px 6px; }
 .del { opacity: 0; background: transparent; border: none; color: var(--red); cursor: pointer; font-size: 12px; padding: 3px 6px; border-radius: 6px; transition: opacity .12s; }
 tr:hover .del { opacity: 1; }
 .del:hover { background: var(--red-soft); }
@@ -485,10 +587,15 @@ tr:hover .del { opacity: 1; }
 .chip-kw.add { color: var(--accent); border-style: dashed; border-color: color-mix(in srgb, var(--accent) 40%, transparent); cursor: pointer; background: transparent; font-family: inherit; }
 .kw-add-input { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11px; padding: 2px 7px; border: 1px solid var(--accent); border-radius: 6px; background: var(--surface); color: var(--ink); outline: none; width: 130px; }
 
-/* baseline */
+/* baseline / valor base */
 .val { font-weight: 800; letter-spacing: -.01em; }
 .muted { color: var(--ink-3); }
 .note { font-size: 11px; color: var(--ink-3); }
+.base-edit { display: inline-flex; align-items: center; gap: 4px; justify-content: flex-end; }
+.base-edit .rs { font-size: 11px; font-weight: 700; color: var(--ink-3); }
+.base-input { width: 94px; text-align: right; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; padding: 4px 7px; border: 1px solid var(--stroke); border-radius: 7px; background: var(--surface); color: var(--ink); outline: none; font-family: inherit; }
+.base-input:focus { border-color: var(--accent); }
+.base-input::placeholder { color: var(--ink-3); font-weight: 500; }
 
 /* origin tag */
 .tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 100px; border: 1px solid var(--stroke); color: var(--ink-2); background: var(--surface-2); }
@@ -508,6 +615,7 @@ tr:hover .del { opacity: 1; }
 .vig-edit label { display: flex; flex-direction: column; gap: 2px; font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
 .vig-edit input { font-size: 11px; padding: 2px 4px; border: 1px solid var(--stroke); border-radius: 6px; background: var(--surface); color: var(--ink); font-family: inherit; outline: none; }
 .vig-edit input:focus { border-color: var(--accent); }
+.vig-hint { margin: 6px auto 0; max-width: 230px; font-size: 10px; line-height: 1.45; color: var(--ink-3); text-align: left; }
 
 .foot { margin-top: 1.75rem; font-size: 12px; color: var(--ink-3); border-top: 1px solid var(--stroke-soft); padding-top: 14px; }
 .foot b { color: var(--ink-2); }
