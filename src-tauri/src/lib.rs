@@ -17,7 +17,7 @@ use commands::{
     inflation::{fetch_ipca, get_inflation},
     manual_entries::{add_manual_entry, list_manual_entries, remove_manual_entry, update_manual_entry},
     payslips::{import_payslip, list_payslips, remove_payslip, save_payslip},
-    recurring::{dismiss_recurring_suggestion, list_fixed_expenses, list_recurring_categories, recurring_suggestions, set_category_recurring},
+    recurring::{dismiss_recurring_suggestion, list_all_categories, list_fixed_expenses, list_recurring_categories, recurring_suggestions, set_category_recurring, set_recurring_base},
     secrets::{clear_saved_password, has_saved_password},
     transactions::list_all_transactions,
 };
@@ -136,6 +136,8 @@ pub fn run() {
             remove_payslip,
             list_recurring_categories,
             set_category_recurring,
+            set_recurring_base,
+            list_all_categories,
             recurring_suggestions,
             dismiss_recurring_suggestion,
             list_fixed_expenses,

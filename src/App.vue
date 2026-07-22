@@ -50,7 +50,7 @@ onErrorCaptured((err) => {
         <div class="tabs">
           <RouterLink to="/" active-class="active"><span class="ic">📊</span>Mês</RouterLink>
           <RouterLink to="/ano" active-class="active"><span class="ic">📅</span>Ano</RouterLink>
-          <RouterLink to="/transacoes" active-class="active"><span class="ic">🧾</span>Despesas</RouterLink>
+          <RouterLink to="/transacoes" active-class="active"><span class="ic">🧾</span>Despesas &amp; Receitas</RouterLink>
           <RouterLink to="/receitas-fixos" active-class="active"><span class="ic">💰</span>Fixos &amp; Renda</RouterLink>
           <RouterLink to="/categorias" active-class="active"><span class="ic">🗂️</span>Categorias</RouterLink>
           <RouterLink to="/importacoes" active-class="active"><span class="ic">📥</span>Importações</RouterLink>

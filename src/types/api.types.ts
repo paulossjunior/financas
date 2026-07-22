@@ -312,8 +312,10 @@ export interface RecurringCategoryInfo {
   category: string;
   start_month: string | null;
   end_month: string | null;
-  /** Baseline (avg of last months) as a decimal string, or null with no history. */
+  /** Computed baseline (avg of last months) as a decimal string, or null with no history. */
   baseline: string | null;
+  /** User-set base value override (editable), decimal string or null. */
+  base_amount: string | null;
   origin: FixedOrigin | null;
   varies: boolean;
 }

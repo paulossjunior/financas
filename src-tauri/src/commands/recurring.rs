@@ -54,6 +54,37 @@ pub async fn recurring_suggestions(
     Ok(suggestions(&obs, &cats, &dismissed))
 }
 
+/// Set (or clear, with null) the user's editable base value for a recurring category.
+#[tauri::command]
+pub async fn set_recurring_base(
+    category: String,
+    base_amount: Option<String>,
+    db: State<'_, SharedDb>,
+) -> Result<(), String> {
+    if category.trim().is_empty() {
+        return Err("categoria não pode ficar vazia".into());
+    }
+    let amount = base_amount.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty());
+    let mut d = db.lock().map_err(|e| e.to_string())?;
+    d.set_recurring_base(category.trim(), amount)
+}
+
+/// All distinct category names in use (config rules + card + bank + manual +
+/// payslip deduction categories) — so every real category can be made recurring.
+#[tauri::command]
+pub async fn list_all_categories(db: State<'_, SharedDb>) -> Result<Vec<String>, String> {
+    use crate::domain::payslip::deduction_category;
+    use std::collections::BTreeSet;
+    let d = db.lock().map_err(|e| e.to_string())?;
+    let mut set: BTreeSet<String> = d.all_category_names()?.into_iter().collect();
+    for p in d.load_payslips().unwrap_or_default() {
+        for it in p.items.iter().filter(|i| i.kind == "desconto" && !i.offsetting) {
+            set.insert(deduction_category(&it.description));
+        }
+    }
+    Ok(set.into_iter().collect())
+}
+
 /// Dismiss a recurrence suggestion so it does not reappear.
 #[tauri::command]
 pub async fn dismiss_recurring_suggestion(target: String, db: State<'_, SharedDb>) -> Result<(), String> {
