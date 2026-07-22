@@ -12,6 +12,7 @@ import CategoryTreemap from "@/components/dashboard/CategoryTreemap.vue";
 import CardForecastChart from "@/components/dashboard/CardForecastChart.vue";
 import InflationCard from "@/components/dashboard/InflationCard.vue";
 import InflationExplainer from "@/components/dashboard/InflationExplainer.vue";
+import InflationContributions from "@/components/dashboard/InflationContributions.vue";
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent]);
 
@@ -519,6 +520,10 @@ const selChartOption = computed(() => {
           :monthly-expense="periodExpense / Math.max(1, activeMonths)"
           :monthly-income="periodIncome / Math.max(1, activeMonths)"
         />
+      </div>
+
+      <div class="card" v-if="inflation?.available">
+        <InflationContributions />
       </div>
 
       <!-- Previsão do cartão (parcelamentos) -->
