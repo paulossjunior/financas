@@ -49,7 +49,9 @@ const expenseEntries = computed(() => store.manualEntries.filter((e) => e.kind =
 // into contas fixas automatically. Read-only here; edit recurrence in Categorias.
 const fixedMonth = ref(currentMonth());
 const derivedFixed = ref<DerivedFixed[]>([]);
-const totalDerived = computed(() => derivedFixed.value.reduce((a, f) => a + (parseFloat(f.amount) || 0), 0));
+const derivedExpense = computed(() => derivedFixed.value.filter((f) => f.kind === "expense"));
+const derivedIncome = computed(() => derivedFixed.value.filter((f) => f.kind === "income"));
+const sumDerived = (list: DerivedFixed[]) => list.reduce((a, f) => a + (parseFloat(f.amount) || 0), 0);
 const ORIGIN_LABEL: Record<string, string> = { extrato: "Extrato", fatura: "Fatura", baseline: "Base", manual: "Manual" };
 async function loadDerived(): Promise<void> {
   try { derivedFixed.value = await listFixedExpenses(fixedMonth.value); } catch { derivedFixed.value = []; }
@@ -165,7 +167,7 @@ async function remove(id: string): Promise<void> {
     <!-- Derived fixed expenses from recurring categories (read-only) -->
     <div class="card derived-card">
       <div class="list-head">
-        <h2 class="expense-text">Contas fixas derivadas <span class="dv-mut">· do extrato / fatura</span></h2>
+        <h2>Recorrentes derivados <span class="dv-mut">· do extrato / fatura · crédito e débito</span></h2>
         <input v-model="fixedMonth" type="month" class="dv-month" aria-label="Mês das contas fixas derivadas" />
       </div>
       <p class="dv-note">
@@ -173,26 +175,51 @@ async function remove(id: string): Promise<void> {
         a partir do que foi importado — ou do <strong>valor base</strong> quando o mês ainda não tem dados. Contadas uma
         vez só (não duplicam com os lançamentos manuais abaixo).
       </p>
-      <ul v-if="derivedFixed.length" class="entry-list">
-        <li v-for="f in derivedFixed" :key="f.category" class="entry">
-          <div class="entry-main">
-            <span class="entry-desc">{{ f.category }}</span>
-            <span class="entry-meta">
-              <span class="chip">{{ ORIGIN_LABEL[f.origin] ?? f.origin }}</span>
-              <span class="badge">{{ f.is_baseline ? "estimado (base)" : "realizado" }}</span>
-            </span>
-          </div>
-          <span class="entry-amount expense-text">{{ formatBRL(f.amount) }}</span>
-        </li>
-      </ul>
+      <template v-if="derivedFixed.length">
+        <!-- Receitas recorrentes (crédito) -->
+        <template v-if="derivedIncome.length">
+          <div class="dv-sub"><span class="income-text">↑ Receitas recorrentes</span></div>
+          <ul class="entry-list">
+            <li v-for="f in derivedIncome" :key="'in-' + f.category" class="entry">
+              <div class="entry-main">
+                <span class="entry-desc">{{ f.category }}</span>
+                <span class="entry-meta">
+                  <span class="chip">{{ ORIGIN_LABEL[f.origin] ?? f.origin }}</span>
+                  <span class="badge">{{ f.is_baseline ? "estimado (base)" : "realizado" }}</span>
+                </span>
+              </div>
+              <span class="entry-amount income-text">{{ formatBRL(f.amount) }}</span>
+            </li>
+          </ul>
+        </template>
+        <!-- Contas fixas (débito) -->
+        <template v-if="derivedExpense.length">
+          <div class="dv-sub"><span class="expense-text">↓ Contas fixas</span></div>
+          <ul class="entry-list">
+            <li v-for="f in derivedExpense" :key="'ex-' + f.category" class="entry">
+              <div class="entry-main">
+                <span class="entry-desc">{{ f.category }}</span>
+                <span class="entry-meta">
+                  <span class="chip">{{ ORIGIN_LABEL[f.origin] ?? f.origin }}</span>
+                  <span class="badge">{{ f.is_baseline ? "estimado (base)" : "realizado" }}</span>
+                </span>
+              </div>
+              <span class="entry-amount expense-text">{{ formatBRL(f.amount) }}</span>
+            </li>
+          </ul>
+        </template>
+        <div class="dv-total">
+          <span>{{ formatMonth(fixedMonth) }}</span>
+          <span class="dv-tots">
+            <span v-if="derivedIncome.length" class="income-text">+ {{ formatBRL(sumDerived(derivedIncome)) }}</span>
+            <strong class="expense-text">− {{ formatBRL(sumDerived(derivedExpense)) }}</strong>
+          </span>
+        </div>
+      </template>
       <p v-else class="empty">
-        Nenhuma conta fixa derivada em {{ formatMonth(fixedMonth) }}. Marque categorias como recorrentes em
+        Nenhuma conta fixa/receita derivada em {{ formatMonth(fixedMonth) }}. Marque categorias como recorrentes em
         <RouterLink to="/categorias">Categorias</RouterLink>.
       </p>
-      <div v-if="derivedFixed.length" class="dv-total">
-        <span>Total derivado · {{ formatMonth(fixedMonth) }}</span>
-        <strong class="expense-text">{{ formatBRL(totalDerived) }}</strong>
-      </div>
     </div>
 
     <!-- Form -->
@@ -354,6 +381,8 @@ h1 { font-size: 1.25rem; font-weight: 600; color: var(--clr-text-primary); lette
 .dv-note strong { color: var(--clr-text-primary); }
 .dv-total { display: flex; align-items: baseline; justify-content: space-between; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 2px solid var(--clr-stroke); font-size: 0.8125rem; font-weight: 600; color: var(--clr-text-secondary); }
 .dv-total strong { font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+.dv-tots { display: flex; gap: 1rem; align-items: baseline; font-variant-numeric: tabular-nums; }
+.dv-sub { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin: 0.6rem 0 0.15rem; }
 
 .card {
   background: var(--clr-surface);

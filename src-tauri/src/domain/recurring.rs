@@ -17,6 +17,8 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+use super::manual_entry::EntryKind;
+
 /// Default number of past months averaged for the baseline.
 pub const BASELINE_MONTHS: usize = 3;
 
@@ -64,23 +66,32 @@ pub enum FixedOrigin {
     Baseline,
 }
 
-/// One realized, categorized expense observation from imported data.
+/// One realized, categorized movement observation from imported data.
 #[derive(Debug, Clone)]
 pub struct Observation {
     pub month: String,
     pub category: String,
-    /// Positive expense amount (reversals already netted by the caller).
+    /// Positive amount (reversals already netted by the caller). `kind` carries the sign meaning.
     pub amount: Decimal,
     pub origin: FixedOrigin,
+    /// Whether this is income (crédito) or expense (débito).
+    pub kind: EntryKind,
 }
 
 impl Observation {
-    pub fn new(month: impl Into<String>, category: impl Into<String>, amount: Decimal, origin: FixedOrigin) -> Self {
-        Self { month: month.into(), category: category.into(), amount, origin }
+    pub fn new(
+        month: impl Into<String>,
+        category: impl Into<String>,
+        amount: Decimal,
+        origin: FixedOrigin,
+        kind: EntryKind,
+    ) -> Self {
+        Self { month: month.into(), category: category.into(), amount, origin, kind }
     }
 }
 
-/// A derived fixed expense for a single (category, month).
+/// A derived fixed movement for a single (category, month) — expense (conta fixa)
+/// or income (renda recorrente), per `kind`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DerivedFixed {
     pub category: String,
@@ -90,17 +101,23 @@ pub struct DerivedFixed {
     pub origin: FixedOrigin,
     /// True when `amount` is a baseline estimate, not realized data.
     pub is_baseline: bool,
+    /// Income (crédito) or expense (débito), inferred from the imported data.
+    pub kind: EntryKind,
 }
 
 /// Sum realized observations of one recurring category in one month.
-/// Returns the total and the dominant origin (Extrato wins over Fatura when both
-/// exist, since the statement is the primary data source). `None` if nothing realized.
-fn realized_for(month: &str, category: &str, obs: &[Observation]) -> Option<(Decimal, FixedOrigin)> {
-    let mut total = Decimal::ZERO;
+/// Returns the total, the dominant origin (Extrato wins over Fatura) and the
+/// dominant kind (income vs expense by total). `None` if nothing realized.
+fn realized_for(month: &str, category: &str, obs: &[Observation]) -> Option<(Decimal, FixedOrigin, EntryKind)> {
+    let mut income = Decimal::ZERO;
+    let mut expense = Decimal::ZERO;
     let mut saw_extrato = false;
     let mut saw_any = false;
     for o in obs.iter().filter(|o| o.month == month && o.category == category) {
-        total += o.amount;
+        match o.kind {
+            EntryKind::Income => income += o.amount,
+            EntryKind::Expense => expense += o.amount,
+        }
         saw_any = true;
         if o.origin == FixedOrigin::Extrato {
             saw_extrato = true;
@@ -110,7 +127,30 @@ fn realized_for(month: &str, category: &str, obs: &[Observation]) -> Option<(Dec
         return None;
     }
     let origin = if saw_extrato { FixedOrigin::Extrato } else { FixedOrigin::Fatura };
-    Some((total, origin))
+    let (kind, total) = if income > expense {
+        (EntryKind::Income, income)
+    } else {
+        (EntryKind::Expense, expense)
+    };
+    Some((total, origin, kind))
+}
+
+/// Dominant kind (income vs expense) for a category across all its observations.
+/// Defaults to Expense when there is no history.
+fn dominant_kind(category: &str, obs: &[Observation]) -> EntryKind {
+    let mut income = Decimal::ZERO;
+    let mut expense = Decimal::ZERO;
+    for o in obs.iter().filter(|o| o.category == category) {
+        match o.kind {
+            EntryKind::Income => income += o.amount,
+            EntryKind::Expense => expense += o.amount,
+        }
+    }
+    if income > expense {
+        EntryKind::Income
+    } else {
+        EntryKind::Expense
+    }
 }
 
 /// Baseline for a recurring category as of `upto_month` (exclusive): the average of
@@ -139,11 +179,12 @@ pub fn baseline(cat: &RecurringCategory, upto_month: &str, obs: &[Observation], 
 pub fn derive_month(month: &str, cats: &[RecurringCategory], obs: &[Observation]) -> Vec<DerivedFixed> {
     let mut out = Vec::new();
     for cat in cats.iter().filter(|c| c.active_in(month)) {
-        if let Some((amount, origin)) = realized_for(month, &cat.category, obs) {
-            out.push(DerivedFixed { category: cat.category.clone(), month: month.to_string(), amount, origin, is_baseline: false });
+        if let Some((amount, origin, kind)) = realized_for(month, &cat.category, obs) {
+            out.push(DerivedFixed { category: cat.category.clone(), month: month.to_string(), amount, origin, is_baseline: false, kind });
         } else if let Some(amount) = cat.base_amount.or_else(|| baseline(cat, month, obs, BASELINE_MONTHS)) {
             // User-set base value takes precedence over the computed average; both are estimates.
-            out.push(DerivedFixed { category: cat.category.clone(), month: month.to_string(), amount, origin: FixedOrigin::Baseline, is_baseline: true });
+            let kind = dominant_kind(&cat.category, obs);
+            out.push(DerivedFixed { category: cat.category.clone(), month: month.to_string(), amount, origin: FixedOrigin::Baseline, is_baseline: true, kind });
         }
         // else: recurring category with no realized data and no history → nothing this month.
     }
@@ -232,10 +273,14 @@ fn decimal_to_f64(d: &Decimal) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::manual_entry::EntryKind;
     use rust_decimal_macros::dec;
 
     fn obs(month: &str, cat: &str, amt: Decimal, origin: FixedOrigin) -> Observation {
-        Observation::new(month, cat, amt, origin)
+        Observation::new(month, cat, amt, origin, EntryKind::Expense)
+    }
+    fn obs_income(month: &str, cat: &str, amt: Decimal, origin: FixedOrigin) -> Observation {
+        Observation::new(month, cat, amt, origin, EntryKind::Income)
     }
 
     #[test]
@@ -263,6 +308,24 @@ mod tests {
         assert_eq!(d[0].amount, dec!(2000));
         assert_eq!(d[0].origin, FixedOrigin::Extrato);
         assert!(!d[0].is_baseline);
+    }
+
+    #[test]
+    fn derive_infers_income_kind_from_data() {
+        let cats = vec![RecurringCategory::ongoing("Bolsa")];
+        let o = vec![obs_income("2026-06", "Bolsa", dec!(2100), FixedOrigin::Extrato)];
+        let d = derive_month("2026-06", &cats, &o);
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].kind, EntryKind::Income);
+        assert_eq!(d[0].amount, dec!(2100));
+    }
+
+    #[test]
+    fn derive_default_kind_is_expense() {
+        let cats = vec![RecurringCategory::ongoing("Aluguel")];
+        let o = vec![obs("2026-06", "Aluguel", dec!(2000), FixedOrigin::Extrato)];
+        let d = derive_month("2026-06", &cats, &o);
+        assert_eq!(d[0].kind, EntryKind::Expense);
     }
 
     #[test]

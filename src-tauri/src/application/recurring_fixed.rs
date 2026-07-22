@@ -9,6 +9,7 @@ use serde::Serialize;
 
 use crate::domain::bank_statement::BankEntry;
 use crate::domain::invoice::Invoice;
+use crate::domain::manual_entry::EntryKind;
 use crate::domain::recurring::{
     baseline, derive_month, detect_suggestions, DerivedFixed, FixedOrigin, Observation,
     RecurringCategory, RecurringSuggestion, BASELINE_MONTHS,
@@ -29,13 +30,14 @@ pub fn build_observations(invoices: &[Invoice], bank: &[BankEntry]) -> Vec<Obser
     for inv in invoices {
         for t in &inv.transactions {
             let month = t.date.format("%Y-%m").to_string();
-            out.push(Observation::new(month, t.category.clone(), t.amount, FixedOrigin::Fatura));
+            // Card charges are always expenses (reversals keep their negative sign).
+            out.push(Observation::new(month, t.category.clone(), t.amount, FixedOrigin::Fatura, EntryKind::Expense));
         }
     }
     for b in bank {
-        if b.kind == "expense" {
-            out.push(Observation::new(b.month.clone(), b.category.clone(), b.amount.abs(), FixedOrigin::Extrato));
-        }
+        // Keep credit/debit so income categories derive as renda recorrente.
+        let kind = if b.kind == "income" { EntryKind::Income } else { EntryKind::Expense };
+        out.push(Observation::new(b.month.clone(), b.category.clone(), b.amount.abs(), FixedOrigin::Extrato, kind));
     }
     out
 }
@@ -141,7 +143,7 @@ mod tests {
     use rust_decimal_macros::dec;
 
     fn ob(m: &str, c: &str, a: Decimal, o: FixedOrigin) -> Observation {
-        Observation::new(m, c, a, o)
+        Observation::new(m, c, a, o, EntryKind::Expense)
     }
 
     #[test]
@@ -171,7 +173,7 @@ mod tests {
     }
 
     #[test]
-    fn build_observations_from_bank_expense_only() {
+    fn build_observations_keeps_bank_income_and_expense_kinds() {
         let bank = vec![
             BankEntry {
                 id: "1".into(), bank: "BTG".into(), account: "x".into(), date: "2026-06-05".into(),
@@ -180,14 +182,17 @@ mod tests {
             },
             BankEntry {
                 id: "2".into(), bank: "BTG".into(), account: "x".into(), date: "2026-06-01".into(),
-                month: "2026-06".into(), description: "Salário".into(), category: "Salário".into(),
+                month: "2026-06".into(), description: "Bolsa".into(), category: "Bolsa".into(),
                 amount: dec!(5000), kind: "income".into(),
             },
         ];
         let obs = build_observations(&[], &bank);
-        assert_eq!(obs.len(), 1);
-        assert_eq!(obs[0].category, "Aluguel");
-        assert_eq!(obs[0].amount, dec!(2000));
-        assert_eq!(obs[0].origin, FixedOrigin::Extrato);
+        assert_eq!(obs.len(), 2);
+        let aluguel = obs.iter().find(|o| o.category == "Aluguel").unwrap();
+        assert_eq!(aluguel.amount, dec!(2000));
+        assert_eq!(aluguel.kind, EntryKind::Expense);
+        let bolsa = obs.iter().find(|o| o.category == "Bolsa").unwrap();
+        assert_eq!(bolsa.amount, dec!(5000));
+        assert_eq!(bolsa.kind, EntryKind::Income);
     }
 }
