@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from "vue";
+import { onMounted, ref, computed, watch } from "vue";
 import { useInvoiceStore } from "@/stores/invoice.store";
 import { useSettingsStore } from "@/stores/settings.store";
-import { listPayslips } from "@/services/tauri.service";
-import type { EntryKind, ManualEntry, Payslip } from "@/types/api.types";
+import { listPayslips, listFixedExpenses } from "@/services/tauri.service";
+import type { EntryKind, ManualEntry, Payslip, DerivedFixed } from "@/types/api.types";
 
 const store = useInvoiceStore();
 const settings = useSettingsStore();
@@ -45,6 +45,17 @@ const categorySuggestions = computed(() =>
 const incomeEntries = computed(() => store.manualEntries.filter((e) => e.kind === "income"));
 const expenseEntries = computed(() => store.manualEntries.filter((e) => e.kind === "expense"));
 
+// Derived fixed expenses: categories marked recurring turn imported data (extrato/fatura)
+// into contas fixas automatically. Read-only here; edit recurrence in Categorias.
+const fixedMonth = ref(currentMonth());
+const derivedFixed = ref<DerivedFixed[]>([]);
+const totalDerived = computed(() => derivedFixed.value.reduce((a, f) => a + (parseFloat(f.amount) || 0), 0));
+const ORIGIN_LABEL: Record<string, string> = { extrato: "Extrato", fatura: "Fatura", baseline: "Base", manual: "Manual" };
+async function loadDerived(): Promise<void> {
+  try { derivedFixed.value = await listFixedExpenses(fixedMonth.value); } catch { derivedFixed.value = []; }
+}
+watch(fixedMonth, loadDerived);
+
 const totalIncome = computed(() => sum(incomeEntries.value));
 const totalExpense = computed(() => sum(expenseEntries.value));
 
@@ -67,6 +78,7 @@ onMounted(async () => {
   await settings.loadConfig();
   await store.loadManualEntries();
   try { payslips.value = await listPayslips(); } catch { /* ignore */ }
+  await loadDerived();
 });
 
 function resetForm(): void {
@@ -148,6 +160,39 @@ async function remove(id: string): Promise<void> {
         <span class="sc-val muted" v-else>nenhum contracheque importado</span>
       </div>
       <RouterLink class="sc-link" to="/contracheque">📄 {{ latestPayslip ? "Ver contracheques" : "Importar contracheque" }}</RouterLink>
+    </div>
+
+    <!-- Derived fixed expenses from recurring categories (read-only) -->
+    <div class="card derived-card">
+      <div class="list-head">
+        <h2 class="expense-text">Contas fixas derivadas <span class="dv-mut">· do extrato / fatura</span></h2>
+        <input v-model="fixedMonth" type="month" class="dv-month" aria-label="Mês das contas fixas derivadas" />
+      </div>
+      <p class="dv-note">
+        Categorias marcadas como <RouterLink to="/categorias">recorrentes</RouterLink> viram contas fixas automaticamente,
+        a partir do que foi importado — ou do <strong>valor base</strong> quando o mês ainda não tem dados. Contadas uma
+        vez só (não duplicam com os lançamentos manuais abaixo).
+      </p>
+      <ul v-if="derivedFixed.length" class="entry-list">
+        <li v-for="f in derivedFixed" :key="f.category" class="entry">
+          <div class="entry-main">
+            <span class="entry-desc">{{ f.category }}</span>
+            <span class="entry-meta">
+              <span class="chip">{{ ORIGIN_LABEL[f.origin] ?? f.origin }}</span>
+              <span class="badge">{{ f.is_baseline ? "estimado (base)" : "realizado" }}</span>
+            </span>
+          </div>
+          <span class="entry-amount expense-text">{{ formatBRL(f.amount) }}</span>
+        </li>
+      </ul>
+      <p v-else class="empty">
+        Nenhuma conta fixa derivada em {{ formatMonth(fixedMonth) }}. Marque categorias como recorrentes em
+        <RouterLink to="/categorias">Categorias</RouterLink>.
+      </p>
+      <div v-if="derivedFixed.length" class="dv-total">
+        <span>Total derivado · {{ formatMonth(fixedMonth) }}</span>
+        <strong class="expense-text">{{ formatBRL(totalDerived) }}</strong>
+      </div>
     </div>
 
     <!-- Form -->
@@ -298,6 +343,17 @@ h1 { font-size: 1.25rem; font-weight: 600; color: var(--clr-text-primary); lette
 .sc-link:hover { text-decoration: underline; }
 .income-note { font-size: .78rem; color: var(--clr-text-muted); margin: 0 0 1rem; }
 .income-note a { color: var(--clr-accent); }
+
+/* Derived fixed expenses card */
+.derived-card { margin-bottom: 1rem; }
+.dv-mut { font-weight: 400; color: var(--clr-text-muted); font-size: 0.8rem; }
+.dv-month { font-family: var(--font-body); font-size: 0.8125rem; padding: 0.35rem 0.55rem; border: 1px solid var(--clr-stroke); border-radius: var(--radius-md); background: var(--clr-surface); color: var(--clr-text-primary); outline: none; }
+.dv-month:focus { border-color: var(--clr-accent); }
+.dv-note { font-size: 0.78rem; color: var(--clr-text-secondary); margin: 0 0 0.75rem; line-height: 1.5; }
+.dv-note a { color: var(--clr-accent); }
+.dv-note strong { color: var(--clr-text-primary); }
+.dv-total { display: flex; align-items: baseline; justify-content: space-between; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 2px solid var(--clr-stroke); font-size: 0.8125rem; font-weight: 600; color: var(--clr-text-secondary); }
+.dv-total strong { font-size: 0.95rem; font-variant-numeric: tabular-nums; }
 
 .card {
   background: var(--clr-surface);
