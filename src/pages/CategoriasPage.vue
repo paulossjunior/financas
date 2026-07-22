@@ -263,8 +263,9 @@ function cancelAdd(): void {
 }
 async function removeKw(name: string, kw: string): Promise<void> {
   settings.removeKeyword(name, kw);
+  settings.markUnmapped(kw);
   await persist();
-  flash(`Palavra-chave "${kw}" removida de ${name}. Os lançamentos que dependiam dela voltaram para "Outros" — recategorize na aba Mapeamento de despesas.`);
+  flash(`Palavra-chave "${kw}" removida de ${name}. Os lançamentos voltaram para "Outros" e aparecem realçados no topo da fila — recategorize na aba Mapeamento de despesas.`);
 }
 function focusEl(vnode: { el?: HTMLElement | null }): void {
   vnode.el?.focus();
