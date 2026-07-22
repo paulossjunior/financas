@@ -14,6 +14,7 @@ use crate::domain::manual_entry::{EntryKind, ManualEntry};
 use crate::domain::payslip::{Payslip, PayslipItem};
 use crate::domain::recurring::RecurringCategory;
 use crate::domain::transaction::{InstallmentInfo, Transaction};
+use crate::domain::categorizer::Categorizer;
 use crate::domain::{AppConfig, CategoryRule};
 
 /// Parse a money value stored as text. The app always writes valid `Decimal`
@@ -173,6 +174,17 @@ impl Database {
         if let Err(e) = self
             .conn
             .execute("ALTER TABLE recurring_categories ADD COLUMN base_amount TEXT", [])
+        {
+            let msg = e.to_string();
+            if !msg.contains("duplicate column") {
+                return Err(msg);
+            }
+        }
+        // Migrate bank_entries created before user_categorized existed. When true, the
+        // user set the category by hand → keyword recategorization must not overwrite it.
+        if let Err(e) = self
+            .conn
+            .execute("ALTER TABLE bank_entries ADD COLUMN user_categorized INTEGER NOT NULL DEFAULT 0", [])
         {
             let msg = e.to_string();
             if !msg.contains("duplicate column") {
@@ -686,10 +698,50 @@ impl Database {
     }
 
     pub fn update_bank_entry_category(&mut self, id: &str, category: &str) -> Result<(), String> {
+        // A hand-set category is a per-entry override: mark it so keyword recategorization
+        // leaves it alone.
         self.conn
-            .execute("UPDATE bank_entries SET category = ?1 WHERE id = ?2", params![category, id])
+            .execute(
+                "UPDATE bank_entries SET category = ?1, user_categorized = 1 WHERE id = ?2",
+                params![category, id],
+            )
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    /// Re-run keyword rules over bank statement entries (both credit and debit), so a
+    /// keyword categorizes card AND extrato uniformly. A keyword match wins; when no
+    /// keyword matches, the existing category (BTG fallback / prior) is kept. Entries the
+    /// user categorized by hand (`user_categorized = 1`) are never touched. Returns the
+    /// number of entries whose category changed.
+    pub fn recategorize_bank_entries(&mut self, categorizer: &Categorizer) -> Result<usize, String> {
+        let rows: Vec<(String, String, String)> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT id, description, category FROM bank_entries WHERE user_categorized = 0")
+                .map_err(|e| e.to_string())?;
+            let mapped = stmt
+                .query_map([], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+                })
+                .map_err(|e| e.to_string())?;
+            let mut v = Vec::new();
+            for r in mapped {
+                v.push(r.map_err(|e| e.to_string())?);
+            }
+            v
+        };
+        let mut changed = 0usize;
+        for (id, description, category) in rows {
+            let matched = categorizer.categorize(&description);
+            if matched != "Outros" && matched != category {
+                self.conn
+                    .execute("UPDATE bank_entries SET category = ?1 WHERE id = ?2", params![matched, id])
+                    .map_err(|e| e.to_string())?;
+                changed += 1;
+            }
+        }
+        Ok(changed)
     }
 
     pub fn remove_bank_entry(&mut self, id: &str) -> Result<(), String> {
