@@ -3,6 +3,7 @@ import { onMounted, ref, computed, watch } from "vue";
 import { useInvoiceStore } from "@/stores/invoice.store";
 import { useSettingsStore } from "@/stores/settings.store";
 import { listPayslips, listFixedExpenses } from "@/services/tauri.service";
+import { maskMoney, parseMoneyBR } from "@/utils/money";
 import type { EntryKind, ManualEntry, Payslip, DerivedFixed } from "@/types/api.types";
 
 const store = useInvoiceStore();
@@ -98,7 +99,7 @@ function startEdit(e: ManualEntry): void {
   editingId.value = e.id;
   kind.value = e.kind;
   description.value = e.description;
-  amount.value = e.amount;
+  amount.value = (parseFloat(e.amount) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   category.value = e.category;
   month.value = e.month;
   recurring.value = e.recurring;
@@ -108,7 +109,7 @@ function startEdit(e: ManualEntry): void {
 
 async function submit(): Promise<void> {
   formError.value = null;
-  const amt = parseFloat(amount.value.replace(",", "."));
+  const amt = parseMoneyBR(amount.value);
   if (!description.value.trim()) { formError.value = "Informe uma descrição."; return; }
   if (!category.value.trim()) { formError.value = "Informe uma categoria."; return; }
   if (!(amt > 0)) { formError.value = "Informe um valor maior que zero."; return; }
@@ -249,7 +250,7 @@ async function remove(id: string): Promise<void> {
 
         <label class="field">
           <span>Valor (R$)</span>
-          <input v-model="amount" type="text" inputmode="decimal" placeholder="0,00" @keyup.enter="submit" />
+          <input v-model="amount" type="text" inputmode="numeric" placeholder="0,00" @input="amount = maskMoney(amount)" @keyup.enter="submit" />
         </label>
 
         <label class="field">

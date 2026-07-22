@@ -11,6 +11,7 @@ import {
   setRecurringBase,
 } from "@/services/tauri.service";
 import type { RecurringCategoryInfo, RecurringSuggestion, CategoryGroup } from "@/types/api.types";
+import { maskMoney } from "@/utils/money";
 import MappingPage from "@/pages/MappingPage.vue";
 
 const settings = useSettingsStore();
@@ -163,15 +164,6 @@ function parsePtBrDecimal(raw: string): string | null {
   const n = parseFloat(cleaned);
   if (!Number.isFinite(n)) return null;
   return String(n);
-}
-/** Currency mask: keep only digits, read them as cents, render pt-BR "1.234,56".
- *  So the field accepts numbers only and always shows a money value. */
-function maskMoney(raw: string): string {
-  const digits = raw.replace(/\D/g, "");
-  if (!digits) return "";
-  const cents = parseInt(digits, 10);
-  if (!Number.isFinite(cents)) return "";
-  return (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function onBaseInput(e: Event): void {
   const el = e.target as HTMLInputElement;

@@ -9,6 +9,7 @@ import CardForecastChart from "@/components/dashboard/CardForecastChart.vue";
 import InflationExplainer from "@/components/dashboard/InflationExplainer.vue";
 import type { Category, InflationData, ManualEntry, ParseWarning, Payslip } from "@/types/api.types";
 import { listPayslips, getInflation, fetchIpca } from "@/services/tauri.service";
+import { maskMoney, parseMoneyBR } from "@/utils/money";
 
 const store = useInvoiceStore();
 const settingsStore = useSettingsStore();
@@ -361,7 +362,7 @@ function qaMonth(): string {
 }
 async function addQuick(): Promise<void> {
   qaError.value = null;
-  const amt = parseFloat(qaAmount.value.replace(",", "."));
+  const amt = parseMoneyBR(qaAmount.value);
   if (!qaDesc.value.trim()) { qaError.value = "Informe uma descrição."; return; }
   if (!qaCat.value.trim()) { qaError.value = "Informe uma categoria."; return; }
   if (!(amt > 0)) { qaError.value = "Informe um valor maior que zero."; return; }
@@ -401,7 +402,7 @@ function editAvulso(e: ManualEntry): void {
   qaEditId.value = e.id;
   qaKind.value = e.kind;
   qaDesc.value = e.description;
-  qaAmount.value = e.amount;
+  qaAmount.value = (parseFloat(e.amount) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   qaCat.value = e.category;
   qaError.value = null;
   qaOpen.value = true;
@@ -548,7 +549,7 @@ function refLabel(): string {
         <button type="button" :class="{ active: qaKind === 'income' }" @click="qaKind = 'income'">↑ Crédito</button>
       </div>
       <input v-model="qaDesc" class="qa-in" type="text" :placeholder="qaKind === 'income' ? 'Ex: Freelance' : 'Ex: Conta avulsa'" @keyup.enter="addQuick" />
-      <input v-model="qaAmount" class="qa-in qa-amt" type="text" inputmode="decimal" placeholder="0,00" @keyup.enter="addQuick" />
+      <input v-model="qaAmount" class="qa-in qa-amt" type="text" inputmode="numeric" placeholder="0,00" @input="qaAmount = maskMoney(qaAmount)" @keyup.enter="addQuick" />
       <input v-model="qaCat" class="qa-in" type="text" list="qa-cats" placeholder="Categoria" @keyup.enter="addQuick" />
       <datalist id="qa-cats"><option v-for="c in qaSuggestions" :key="c" :value="c" /></datalist>
       <span class="qa-mes">{{ formatMonthFilter(qaMonth()) }}</span>
