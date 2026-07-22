@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useSettingsStore } from "@/stores/settings.store";
-import CategoryList from "@/components/settings/CategoryList.vue";
 import { hasSavedPassword, clearSavedPassword } from "@/services/tauri.service";
 
 const store = useSettingsStore();
@@ -75,21 +74,6 @@ async function forgetPassword(): Promise<void> {
             </button>
           </div>
         </div>
-      </section>
-
-      <div class="divider" />
-
-      <section class="section">
-        <h2>Categorias &amp; Regras</h2>
-        <p class="field-hint">Gerencie categorias e palavras-chave para classificação automática de transações.</p>
-
-        <CategoryList
-          :groups="store.categoryGroups"
-          @add-category="store.addCategory('Nova Categoria')"
-          @delete-category="store.deleteCategory"
-          @rename-category="store.renameCategory"
-          @update-keywords="(name, kws) => { const g = store.categoryGroups.find(g => g.name === name); if (g) { g.keywords.splice(0, g.keywords.length, ...kws); } }"
-        />
       </section>
 
       <div class="divider" />
