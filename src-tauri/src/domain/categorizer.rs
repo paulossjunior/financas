@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct CategoryRule {
     pub keywords: Vec<String>,
     pub category: String,
-    pub priority: u8,
+    pub priority: u32,
 }
 
 pub struct Categorizer {

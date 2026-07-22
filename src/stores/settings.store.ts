@@ -49,6 +49,18 @@ export const useSettingsStore = defineStore("settings", () => {
   const saving = ref(false);
   const error = ref<string | null>(null);
 
+  // Merchants/keywords recently removed from a category (UPPERCASE) — highlighted
+  // at the top of the "Fila do Outros" (Mapeamento) so they can be re-categorized.
+  const recentlyUnmapped = ref<string[]>([]);
+  function markUnmapped(keyword: string): void {
+    const k = keyword.trim().toUpperCase();
+    if (k && !recentlyUnmapped.value.includes(k)) recentlyUnmapped.value = [...recentlyUnmapped.value, k];
+  }
+  function clearUnmapped(keyword: string): void {
+    const k = keyword.trim().toUpperCase();
+    recentlyUnmapped.value = recentlyUnmapped.value.filter((x) => x !== k);
+  }
+
   const categoryGroups = computed(() =>
     [...groups.value].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
   );
@@ -133,5 +145,8 @@ export const useSettingsStore = defineStore("settings", () => {
     removeKeyword,
     getConflict,
     saveCategories,
+    recentlyUnmapped,
+    markUnmapped,
+    clearUnmapped,
   };
 });

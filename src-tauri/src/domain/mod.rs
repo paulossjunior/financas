@@ -7,6 +7,7 @@ pub mod inflation;
 pub mod invoice;
 pub mod manual_entry;
 pub mod payslip;
+pub mod recurring;
 pub mod transaction;
 pub mod year;
 

@@ -14,6 +14,9 @@ import type {
   Payslip,
   Transaction,
   YearSummary,
+  RecurringCategoryInfo,
+  RecurringSuggestion,
+  DerivedFixed,
 } from "@/types/api.types";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -33,7 +36,10 @@ function mapError(raw: string): string {
     const cols = raw.replace("INVALID_FORMAT:", "");
     return `Formato inválido: colunas ausentes — ${cols}`;
   }
-  return `Erro inesperado: ${raw}`;
+  // Keep the technical detail in the console for debugging, but show the user a calm,
+  // actionable message instead of a raw error string.
+  console.error("[financas] erro inesperado:", raw);
+  return "Não foi possível concluir a operação. Tente novamente; se continuar, reinicie o app.";
 }
 
 export async function importInvoices(
@@ -316,6 +322,76 @@ export async function listPayslips(): Promise<Payslip[]> {
 export async function removePayslip(month: string): Promise<void> {
   try {
     await invoke<void>("remove_payslip", { month });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+// ── Recurring categories (feature 010) ──
+
+export async function listRecurringCategories(): Promise<RecurringCategoryInfo[]> {
+  try {
+    return await invoke<RecurringCategoryInfo[]>("list_recurring_categories");
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function setCategoryRecurring(
+  category: string,
+  recurring: boolean,
+  startMonth?: string | null,
+  endMonth?: string | null,
+): Promise<void> {
+  try {
+    await invoke<void>("set_category_recurring", {
+      category,
+      recurring,
+      startMonth: startMonth ?? null,
+      endMonth: endMonth ?? null,
+    });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function recurringSuggestions(): Promise<RecurringSuggestion[]> {
+  try {
+    return await invoke<RecurringSuggestion[]>("recurring_suggestions");
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function dismissRecurringSuggestion(target: string): Promise<void> {
+  try {
+    await invoke<void>("dismiss_recurring_suggestion", { target });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+export async function listFixedExpenses(month: string): Promise<DerivedFixed[]> {
+  try {
+    return await invoke<DerivedFixed[]>("list_fixed_expenses", { month });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+/** Set (or clear with null) the user's editable base value for a recurring category. */
+export async function setRecurringBase(category: string, baseAmount: string | null): Promise<void> {
+  try {
+    await invoke<void>("set_recurring_base", { category, baseAmount });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+/** All distinct category names in use (config + card + bank + manual + payslip). */
+export async function listAllCategories(): Promise<string[]> {
+  try {
+    return await invoke<string[]>("list_all_categories");
   } catch (e) {
     throw new Error(mapError(String(e)));
   }

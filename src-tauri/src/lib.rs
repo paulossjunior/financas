@@ -17,6 +17,7 @@ use commands::{
     inflation::{fetch_ipca, get_inflation},
     manual_entries::{add_manual_entry, list_manual_entries, remove_manual_entry, update_manual_entry},
     payslips::{import_payslip, list_payslips, remove_payslip, save_payslip},
+    recurring::{dismiss_recurring_suggestion, list_all_categories, list_fixed_expenses, list_recurring_categories, recurring_suggestions, set_category_recurring, set_recurring_base},
     secrets::{clear_saved_password, has_saved_password},
     transactions::list_all_transactions,
 };
@@ -94,6 +95,9 @@ pub fn run() {
                 if changed {
                     let _ = db.save_all(&invoices);
                 }
+                // Apply the same keyword rules to imported bank statement entries
+                // (credit and debit) so categorization is unified across card and extrato.
+                let _ = db.recategorize_bank_entries(&categorizer);
             }
 
             app.manage(Mutex::new(config));
@@ -133,6 +137,13 @@ pub fn run() {
             save_payslip,
             list_payslips,
             remove_payslip,
+            list_recurring_categories,
+            set_category_recurring,
+            set_recurring_base,
+            list_all_categories,
+            recurring_suggestions,
+            dismiss_recurring_suggestion,
+            list_fixed_expenses,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

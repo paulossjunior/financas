@@ -12,7 +12,9 @@ use crate::domain::bank_statement::BankEntry;
 use crate::domain::invoice::{Invoice, YearMonth};
 use crate::domain::manual_entry::{EntryKind, ManualEntry};
 use crate::domain::payslip::{Payslip, PayslipItem};
+use crate::domain::recurring::RecurringCategory;
 use crate::domain::transaction::{InstallmentInfo, Transaction};
+use crate::domain::categorizer::Categorizer;
 use crate::domain::{AppConfig, CategoryRule};
 
 /// Parse a money value stored as text. The app always writes valid `Decimal`
@@ -142,6 +144,17 @@ impl Database {
                     amount       TEXT NOT NULL,
                     kind         TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS categories (
+                    name TEXT PRIMARY KEY
+                );
+                CREATE TABLE IF NOT EXISTS recurring_categories (
+                    category    TEXT PRIMARY KEY,
+                    start_month TEXT,
+                    end_month   TEXT
+                );
+                CREATE TABLE IF NOT EXISTS dismissed_recurring_suggestions (
+                    target TEXT PRIMARY KEY
+                );
                 ",
             )
             .map_err(|e| e.to_string())?;
@@ -151,6 +164,27 @@ impl Database {
         if let Err(e) = self
             .conn
             .execute("ALTER TABLE manual_entries ADD COLUMN is_salary INTEGER NOT NULL DEFAULT 1", [])
+        {
+            let msg = e.to_string();
+            if !msg.contains("duplicate column") {
+                return Err(msg);
+            }
+        }
+        // Migrate recurring_categories created before base_amount existed.
+        if let Err(e) = self
+            .conn
+            .execute("ALTER TABLE recurring_categories ADD COLUMN base_amount TEXT", [])
+        {
+            let msg = e.to_string();
+            if !msg.contains("duplicate column") {
+                return Err(msg);
+            }
+        }
+        // Migrate bank_entries created before user_categorized existed. When true, the
+        // user set the category by hand → keyword recategorization must not overwrite it.
+        if let Err(e) = self
+            .conn
+            .execute("ALTER TABLE bank_entries ADD COLUMN user_categorized INTEGER NOT NULL DEFAULT 0", [])
         {
             let msg = e.to_string();
             if !msg.contains("duplicate column") {
@@ -193,6 +227,17 @@ impl Database {
         tx.execute("DELETE FROM transaction_overrides", []).map_err(|e| e.to_string())?;
         tx.execute("DELETE FROM manual_entries", []).map_err(|e| e.to_string())?;
         tx.execute("DELETE FROM settings", []).map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM categories", []).map_err(|e| e.to_string())?;
+
+        // Persist every category name (even ones with no keywords yet) so a freshly
+        // created category survives a reload.
+        for rule in &cfg.category_rules {
+            tx.execute(
+                "INSERT OR IGNORE INTO categories (name) VALUES (?1)",
+                params![rule.category],
+            )
+            .map_err(|e| e.to_string())?;
+        }
 
         tx.execute(
             "INSERT INTO settings (key, value) VALUES ('faturas_directory', ?1)",
@@ -264,23 +309,38 @@ impl Database {
                 ))
             })
             .map_err(|e| e.to_string())?;
-        let mut grouped: HashMap<String, (u8, Vec<String>)> = HashMap::new();
+        let mut grouped: HashMap<String, (u32, Vec<String>)> = HashMap::new();
         let mut order: Vec<String> = Vec::new();
         for r in rows {
             let (category, keyword, priority) = r.map_err(|e| e.to_string())?;
             let entry = grouped.entry(category.clone()).or_insert_with(|| {
                 order.push(category.clone());
-                (priority as u8, Vec::new())
+                (priority as u32, Vec::new())
             });
             entry.1.push(keyword);
         }
-        let category_rules: Vec<CategoryRule> = order
+        let mut category_rules: Vec<CategoryRule> = order
             .into_iter()
             .map(|cat| {
                 let (priority, keywords) = grouped.remove(&cat).unwrap();
                 CategoryRule { keywords, category: cat, priority }
             })
             .collect();
+
+        // Categories with no keywords yet (persisted separately) → keep them as empty rules
+        // so a freshly created category doesn't vanish on reload.
+        let mut have: std::collections::HashSet<String> =
+            category_rules.iter().map(|r| r.category.clone()).collect();
+        let mut next_priority = category_rules.iter().map(|r| r.priority).max().unwrap_or(0);
+        let mut cstmt = self.conn.prepare("SELECT name FROM categories ORDER BY name").map_err(|e| e.to_string())?;
+        let cat_rows = cstmt.query_map([], |r| r.get::<_, String>(0)).map_err(|e| e.to_string())?;
+        for r in cat_rows {
+            let name = r.map_err(|e| e.to_string())?;
+            if have.insert(name.clone()) {
+                next_priority += 10;
+                category_rules.push(CategoryRule { keywords: Vec::new(), category: name, priority: next_priority });
+            }
+        }
 
         // transaction_overrides
         let mut stmt = self
@@ -638,10 +698,50 @@ impl Database {
     }
 
     pub fn update_bank_entry_category(&mut self, id: &str, category: &str) -> Result<(), String> {
+        // A hand-set category is a per-entry override: mark it so keyword recategorization
+        // leaves it alone.
         self.conn
-            .execute("UPDATE bank_entries SET category = ?1 WHERE id = ?2", params![category, id])
+            .execute(
+                "UPDATE bank_entries SET category = ?1, user_categorized = 1 WHERE id = ?2",
+                params![category, id],
+            )
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    /// Re-run keyword rules over bank statement entries (both credit and debit), so a
+    /// keyword categorizes card AND extrato uniformly. A keyword match wins; when no
+    /// keyword matches, the existing category (BTG fallback / prior) is kept. Entries the
+    /// user categorized by hand (`user_categorized = 1`) are never touched. Returns the
+    /// number of entries whose category changed.
+    pub fn recategorize_bank_entries(&mut self, categorizer: &Categorizer) -> Result<usize, String> {
+        let rows: Vec<(String, String, String)> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT id, description, category FROM bank_entries WHERE user_categorized = 0")
+                .map_err(|e| e.to_string())?;
+            let mapped = stmt
+                .query_map([], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+                })
+                .map_err(|e| e.to_string())?;
+            let mut v = Vec::new();
+            for r in mapped {
+                v.push(r.map_err(|e| e.to_string())?);
+            }
+            v
+        };
+        let mut changed = 0usize;
+        for (id, description, category) in rows {
+            let matched = categorizer.categorize(&description);
+            if matched != "Outros" && matched != category {
+                self.conn
+                    .execute("UPDATE bank_entries SET category = ?1 WHERE id = ?2", params![matched, id])
+                    .map_err(|e| e.to_string())?;
+                changed += 1;
+            }
+        }
+        Ok(changed)
     }
 
     pub fn remove_bank_entry(&mut self, id: &str) -> Result<(), String> {
@@ -653,6 +753,117 @@ impl Database {
 
     pub fn clear_bank_entries(&mut self) -> Result<(), String> {
         self.conn.execute("DELETE FROM bank_entries", []).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    // ── Recurring categories + dismissed suggestions (feature 010) ──
+
+    pub fn load_recurring_categories(&self) -> Result<Vec<RecurringCategory>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT category, start_month, end_month, base_amount FROM recurring_categories ORDER BY category")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(RecurringCategory {
+                    category: r.get(0)?,
+                    start_month: r.get(1)?,
+                    end_month: r.get(2)?,
+                    base_amount: r
+                        .get::<_, Option<String>>(3)?
+                        .and_then(|s| Decimal::from_str(&s).ok()),
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    /// Upsert (recurring=true) or remove (recurring=false) a category's recurrence.
+    /// `start_month`/`end_month` are "YYYY-MM" or None (open-ended vigência).
+    pub fn set_recurring_category(
+        &mut self,
+        category: &str,
+        recurring: bool,
+        start_month: Option<&str>,
+        end_month: Option<&str>,
+    ) -> Result<(), String> {
+        if recurring {
+            self.conn
+                .execute(
+                    "INSERT INTO recurring_categories (category, start_month, end_month) VALUES (?1, ?2, ?3)
+                     ON CONFLICT(category) DO UPDATE SET start_month = ?2, end_month = ?3",
+                    params![category, start_month, end_month],
+                )
+                .map_err(|e| e.to_string())?;
+        } else {
+            self.conn
+                .execute("DELETE FROM recurring_categories WHERE category = ?1", params![category])
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// Set (or clear, with None) the user's base value for a recurring category.
+    pub fn set_recurring_base(&mut self, category: &str, amount: Option<&str>) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE recurring_categories SET base_amount = ?1 WHERE category = ?2",
+                params![amount, category],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Distinct category names in use anywhere: config rules, card transactions,
+    /// bank entries, manual entries and payslip deduction categories.
+    pub fn all_category_names(&self) -> Result<Vec<String>, String> {
+        let sql = "
+            SELECT name AS category FROM categories
+            UNION SELECT category FROM category_rules
+            UNION SELECT category FROM transactions
+            UNION SELECT category FROM bank_entries
+            UNION SELECT category FROM manual_entries
+            ORDER BY category";
+        let mut stmt = self.conn.prepare(sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for r in rows {
+            let c: String = r.map_err(|e| e.to_string())?;
+            if !c.trim().is_empty() {
+                out.push(c);
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn load_dismissed_suggestions(&self) -> Result<Vec<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT target FROM dismissed_recurring_suggestions")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    }
+
+    pub fn dismiss_suggestion(&mut self, target: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO dismissed_recurring_suggestions (target) VALUES (?1)",
+                params![target],
+            )
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 }

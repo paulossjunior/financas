@@ -6,6 +6,7 @@ import SettingsPage from "@/pages/SettingsPage.vue";
 import TransactionsPage from "@/pages/TransactionsPage.vue";
 import ManualEntriesPage from "@/pages/ManualEntriesPage.vue";
 import MappingPage from "@/pages/MappingPage.vue";
+import CategoriasPage from "@/pages/CategoriasPage.vue";
 import ContrachequePage from "@/pages/ContrachequePage.vue";
 import ExtratoPage from "@/pages/ExtratoPage.vue";
 import ImportsPage from "@/pages/ImportsPage.vue";
@@ -22,6 +23,7 @@ export const router = createRouter({
     { path: "/contracheque", component: ContrachequePage },
     { path: "/importacoes", component: ImportsPage },
     { path: "/extrato", component: ExtratoPage },
+    { path: "/categorias", component: CategoriasPage },
     { path: "/mapeamento", component: MappingPage },
     { path: "/historico", component: HistoryPage },
     { path: "/configuracoes", component: SettingsPage },

@@ -35,8 +35,9 @@ Aplicativo desktop de finanças pessoais — importa faturas do cartão **BTG** 
 - Gráfico receita × despesa, indicadores, teto, ranking.
 - **Matriz categoria × ano** que também é seletor (clique na linha) → alimenta um **gráfico multi-linha** (uma linha por categoria + Total) e um treemap do período.
 
-**Categorização**
-- Regras por palavra-chave (acento-insensível, raiz), overrides por transação, recategorização no startup.
+**Categorização** (tela **🏷️ Categorias**: Categorias & Regras · Mapeamento)
+- Regras por palavra-chave (acento-insensível, raiz) que rodam sobre **cartão e extrato** (crédito e débito), overrides por transação, recategorização no startup. Fila do "Outros" (cartão + extrato) → categorizar vira palavra-chave.
+- **Categorias recorrentes**: marque uma categoria como fixa e as **contas fixas / rendas** são derivadas do dado real (extrato + fatura), com **vigência** (ex.: psicólogo por 3 meses), **valor base** editável e **baseline** (média 3m) para meses ainda não importados. Anti-duplicação: o importado supersede o fixo manual. Detecção opt-in sugere o que parece recorrente.
 
 **Relatórios**
 - Relatório do **mês** e do **período** (respeita o filtro) → **exportar para PDF** pelo navegador do sistema.
