@@ -21,6 +21,7 @@ monthly dashboard, an annual view, and PDF reports. 100% local, no network.
 - SQLite (`financas.db` in app_data_dir) is the source of truth; deterministic UUIDv5 → upsert.
 - Backend layering: `commands → application → domain`; `infrastructure` for I/O. `domain` is Tauri/DB-free.
 - Frontend: only `services/tauri.service.ts` calls `invoke`. Types mirror Rust DTOs in `types/api.types.ts`.
+- **UI/UX**: when designing, building, or reviewing any screen/component/flow/error, load and apply the **`nielsen-heuristics`** skill (`.claude/skills/nielsen-heuristics/SKILL.md`) — review the change against its 10-point checklist before shipping.
 
 ## Common commands
 
