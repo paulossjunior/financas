@@ -95,6 +95,9 @@ pub fn run() {
                 if changed {
                     let _ = db.save_all(&invoices);
                 }
+                // Apply the same keyword rules to imported bank statement entries
+                // (credit and debit) so categorization is unified across card and extrato.
+                let _ = db.recategorize_bank_entries(&categorizer);
             }
 
             app.manage(Mutex::new(config));

@@ -2,9 +2,18 @@
 import { onMounted, ref, reactive, computed, watch } from "vue";
 import { useInvoiceStore } from "@/stores/invoice.store";
 import { useSettingsStore } from "@/stores/settings.store";
+import { listBankEntries } from "@/services/tauri.service";
+import type { BankEntry } from "@/types/api.types";
 
 const store = useInvoiceStore();
 const settings = useSettingsStore();
+
+// Bank statement (extrato) entries — the queue below merges the card's "Outros"
+// with the extrato's "Outros" so a keyword created here categorizes both.
+const bankEntries = ref<BankEntry[]>([]);
+async function loadBank(): Promise<void> {
+  try { bankEntries.value = await listBankEntries(); } catch { bankEntries.value = []; }
+}
 
 const num = (v?: string) => parseFloat(v ?? "0") || 0;
 const okMsg = ref<string | null>(null);
@@ -13,23 +22,32 @@ const rowError = ref<string | null>(null);
 const availableCategories = computed(() => settings.categoryGroups.map((g) => g.name));
 
 const posTx = computed(() => store.allTransactions.filter((t) => !t.is_reversal));
-const outrosList = computed(() =>
-  posTx.value.filter((t) => t.category === "Outros").sort((a, b) => num(b.amount) - num(a.amount))
-);
-const outrosSum = computed(() => outrosList.value.reduce((a, t) => a + num(t.amount), 0));
+
+// Unified "Outros" queue item (card charge or extrato entry).
+interface OutroItem { description: string; amount: number; date: string; }
+const outroItems = computed<OutroItem[]>(() => {
+  const card: OutroItem[] = posTx.value
+    .filter((t) => t.category === "Outros")
+    .map((t) => ({ description: t.description, amount: num(t.amount), date: t.date }));
+  const bank: OutroItem[] = bankEntries.value
+    .filter((b) => b.category === "Outros")
+    .map((b) => ({ description: b.description, amount: Math.abs(num(b.amount)), date: b.date }));
+  return [...card, ...bank].sort((a, b) => b.amount - a.amount);
+});
+const outrosSum = computed(() => outroItems.value.reduce((a, t) => a + t.amount, 0));
 
 // Group uncategorized transactions by merchant (same derived keyword), largest first.
 // One row per merchant → categorizar uma vez aplica a todos os iguais.
 interface OutroGroup { key: string; count: number; sum: number; sample: string; date: string; isNew: boolean; }
 const outrosGroups = computed<OutroGroup[]>(() => {
   const m = new Map<string, OutroGroup>();
-  for (const t of outrosList.value) { // outrosList already sorted by amount desc
+  for (const t of outroItems.value) { // already sorted by amount desc
     const k = merchantKey(t.description);
     if (!k) continue;
     if (!m.has(k)) m.set(k, { key: k, count: 0, sum: 0, sample: t.description, date: t.date, isNew: false });
     const g = m.get(k)!;
     g.count++;
-    g.sum += num(t.amount);
+    g.sum += t.amount;
     if (t.date > g.date) g.date = t.date; // most recent occurrence
   }
   // Recently unmapped merchants (a keyword was just removed from a category) float to
@@ -86,6 +104,7 @@ const conflicts = computed<Conflict[]>(() => {
 onMounted(async () => {
   await settings.loadConfig();
   await store.loadAllTransactions();
+  await loadBank();
 });
 
 async function apply(g: OutroGroup): Promise<void> {
@@ -99,6 +118,8 @@ async function apply(g: OutroGroup): Promise<void> {
     okMsg.value = `"${kw}" → ${dr.cat.trim()} · ${changed} lançamento(s) recategorizado(s).`;
     settings.clearUnmapped(g.key);
     await settings.loadConfig();
+    await loadBank(); // extrato entries were recategorized too — refresh the queue
+    delete drafts[g.key];
   } catch (e) {
     rowError.value = String(e instanceof Error ? e.message : e);
   }
@@ -133,7 +154,7 @@ function shortDate(iso: string): string {
     <div class="stats">
       <div class="card stat flag-amber">
         <div class="l">Sem categoria ("Outros")</div>
-        <div class="v">{{ outrosGroups.length }} <span class="u">lojistas · {{ outrosList.length }} lançamentos</span></div>
+        <div class="v">{{ outrosGroups.length }} <span class="u">lojistas · {{ outroItems.length }} lançamentos</span></div>
       </div>
       <div class="card stat flag-red">
         <div class="l">Valor invisível</div>
@@ -148,7 +169,7 @@ function shortDate(iso: string): string {
     <!-- fila do outros -->
     <h2>Fila do "Outros" <span class="anno">maior valor primeiro · categorizar = vira palavra-chave</span></h2>
     <div class="card pad">
-      <div v-if="!outrosList.length" class="empty-line">🎉 Tudo categorizado! Nenhum lançamento em "Outros".</div>
+      <div v-if="!outroItems.length" class="empty-line">🎉 Tudo categorizado! Nenhum lançamento em "Outros".</div>
       <div v-for="g in outrosGroups" :key="g.key" class="row" :class="{ 'row-new': g.isNew }">
         <div class="info">
           <div class="desc">{{ g.sample }} <span v-if="g.isNew" class="tag-new">recém-saído</span></div>
