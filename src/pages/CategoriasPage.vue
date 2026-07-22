@@ -278,16 +278,35 @@ async function onRename(oldName: string, e: Event): Promise<void> {
   settings.renameCategory(oldName, val);
   await persist();
 }
-async function onNewCategory(): Promise<void> {
-  const name = (window.prompt("Nome da nova categoria:") || "").trim();
-  if (!name) return;
+// New-category modal
+const showNewCat = ref(false);
+const newCatName = ref("");
+const newCatRecurring = ref(false);
+const newCatError = ref<string | null>(null);
+
+function openNewCategory(): void {
+  newCatName.value = "";
+  newCatRecurring.value = false;
+  newCatError.value = null;
+  showNewCat.value = true;
+}
+function closeNewCategory(): void {
+  showNewCat.value = false;
+}
+async function confirmNewCategory(): Promise<void> {
+  const name = newCatName.value.trim();
+  if (!name) { newCatError.value = "Informe um nome."; return; }
   if (allNames.value.some((n) => n.toLowerCase() === name.toLowerCase())) {
-    flash(`A categoria "${name}" já existe.`);
+    newCatError.value = `A categoria "${name}" já existe.`;
     return;
   }
   settings.addCategory(name);
+  if (newCatRecurring.value) {
+    try { await setCategoryRecurring(name, true); } catch { /* surfaced elsewhere */ }
+  }
   await persist();
-  flash(`Categoria "${name}" criada. Adicione palavras-chave ou marque como recorrente.`);
+  showNewCat.value = false;
+  flash(`Categoria "${name}" criada${newCatRecurring.value ? " · marcada como recorrente" : ". Adicione palavras-chave ou marque como recorrente."}`);
 }
 async function onDelete(name: string): Promise<void> {
   settings.deleteCategory(name);
@@ -357,7 +376,7 @@ async function onDelete(name: string): Promise<void> {
         >
           ↕ Só recorrentes
         </button>
-        <button class="btn" @click="onNewCategory">+ Nova categoria</button>
+        <button class="btn" @click="openNewCategory">+ Nova categoria</button>
       </div>
 
       <!-- table -->
@@ -516,6 +535,34 @@ async function onDelete(name: string): Promise<void> {
     <div v-if="activeTab === 'mapeamento'" class="tabpane">
       <MappingPage />
     </div>
+
+    <!-- New category modal -->
+    <div v-if="showNewCat" class="modal-overlay" @click.self="closeNewCategory" @keydown.esc="closeNewCategory">
+      <div class="modal" role="dialog" aria-modal="true" aria-label="Nova categoria">
+        <h3 class="modal-title">Nova categoria</h3>
+        <label class="modal-field">
+          <span>Nome</span>
+          <input
+            v-model="newCatName"
+            type="text"
+            placeholder="Ex.: Pets, Cursos, Aluguel recebido…"
+            autofocus
+            @keyup.enter="confirmNewCategory"
+            @vue:mounted="focusEl"
+          />
+        </label>
+        <label class="modal-check">
+          <input v-model="newCatRecurring" type="checkbox" />
+          <span>Marcar como <strong>recorrente</strong> (conta fixa / renda todo mês)</span>
+        </label>
+        <p v-if="newCatError" class="modal-err">⚠ {{ newCatError }}</p>
+        <p class="modal-hint">Depois você adiciona palavras-chave e, se recorrente, o valor base e a vigência.</p>
+        <div class="modal-actions">
+          <button class="btn ghost" @click="closeNewCategory">Cancelar</button>
+          <button class="btn" @click="confirmNewCategory">Criar categoria</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -563,6 +610,20 @@ h1 { font-size: 28px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 6
 .msg.ok { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .msg.ok .msg-link { margin-left: auto; font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 7px; padding: 4px 10px; cursor: pointer; white-space: nowrap; }
 .msg.ok .msg-link:hover { background: var(--accent); color: #fff; }
+
+/* New category modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(10,20,17,.45); display: grid; place-items: center; z-index: 200; padding: 20px; }
+.modal { width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--stroke); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.3); padding: 20px 22px; }
+.modal-title { font-size: 17px; font-weight: 800; margin: 0 0 14px; }
+.modal-field { display: flex; flex-direction: column; gap: 6px; }
+.modal-field span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
+.modal-field input { font-family: inherit; font-size: 14px; padding: 9px 11px; border: 1px solid var(--stroke); border-radius: 9px; background: var(--surface); color: var(--ink); outline: none; }
+.modal-field input:focus { border-color: var(--accent); }
+.modal-check { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0 0; font-size: 13px; color: var(--ink-2); }
+.modal-check input { margin-top: 2px; accent-color: var(--accent); }
+.modal-err { color: var(--red); font-size: 12.5px; margin: 10px 0 0; }
+.modal-hint { color: var(--ink-3); font-size: 12px; margin: 10px 0 0; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 
 /* suggestion banner */
 .detect { display: flex; align-items: center; gap: 12px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: var(--radius); padding: 11px 14px; margin: 14px 0; flex-wrap: wrap; }

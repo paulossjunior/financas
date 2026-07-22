@@ -143,6 +143,9 @@ impl Database {
                     amount       TEXT NOT NULL,
                     kind         TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS categories (
+                    name TEXT PRIMARY KEY
+                );
                 CREATE TABLE IF NOT EXISTS recurring_categories (
                     category    TEXT PRIMARY KEY,
                     start_month TEXT,
@@ -212,6 +215,17 @@ impl Database {
         tx.execute("DELETE FROM transaction_overrides", []).map_err(|e| e.to_string())?;
         tx.execute("DELETE FROM manual_entries", []).map_err(|e| e.to_string())?;
         tx.execute("DELETE FROM settings", []).map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM categories", []).map_err(|e| e.to_string())?;
+
+        // Persist every category name (even ones with no keywords yet) so a freshly
+        // created category survives a reload.
+        for rule in &cfg.category_rules {
+            tx.execute(
+                "INSERT OR IGNORE INTO categories (name) VALUES (?1)",
+                params![rule.category],
+            )
+            .map_err(|e| e.to_string())?;
+        }
 
         tx.execute(
             "INSERT INTO settings (key, value) VALUES ('faturas_directory', ?1)",
@@ -293,13 +307,28 @@ impl Database {
             });
             entry.1.push(keyword);
         }
-        let category_rules: Vec<CategoryRule> = order
+        let mut category_rules: Vec<CategoryRule> = order
             .into_iter()
             .map(|cat| {
                 let (priority, keywords) = grouped.remove(&cat).unwrap();
                 CategoryRule { keywords, category: cat, priority }
             })
             .collect();
+
+        // Categories with no keywords yet (persisted separately) → keep them as empty rules
+        // so a freshly created category doesn't vanish on reload.
+        let mut have: std::collections::HashSet<String> =
+            category_rules.iter().map(|r| r.category.clone()).collect();
+        let mut next_priority = category_rules.iter().map(|r| r.priority).max().unwrap_or(0);
+        let mut cstmt = self.conn.prepare("SELECT name FROM categories ORDER BY name").map_err(|e| e.to_string())?;
+        let cat_rows = cstmt.query_map([], |r| r.get::<_, String>(0)).map_err(|e| e.to_string())?;
+        for r in cat_rows {
+            let name = r.map_err(|e| e.to_string())?;
+            if have.insert(name.clone()) {
+                next_priority += 10;
+                category_rules.push(CategoryRule { keywords: Vec::new(), category: name, priority: next_priority });
+            }
+        }
 
         // transaction_overrides
         let mut stmt = self
@@ -741,7 +770,8 @@ impl Database {
     /// bank entries, manual entries and payslip deduction categories.
     pub fn all_category_names(&self) -> Result<Vec<String>, String> {
         let sql = "
-            SELECT category FROM category_rules
+            SELECT name AS category FROM categories
+            UNION SELECT category FROM category_rules
             UNION SELECT category FROM transactions
             UNION SELECT category FROM bank_entries
             UNION SELECT category FROM manual_entries
