@@ -141,9 +141,10 @@ function fmtNum(v: string): string {
 function baseInputValue(info: RecurringCategoryInfo): string {
   return info.base_amount ? fmtNum(info.base_amount) : "";
 }
-/** Placeholder = the computed baseline (BRL) so the current auto value stays visible. */
+/** Placeholder = the computed baseline (plain pt-BR number; the "R$" prefix is a
+ *  sibling span) so the current auto value stays visible. */
 function basePlaceholder(info: RecurringCategoryInfo): string {
-  return info.baseline ? fmtBRL(info.baseline) : "valor base…";
+  return info.baseline ? fmtNum(info.baseline) : "0,00";
 }
 /** Convert a pt-BR money input ("1.234,56" / "1234,56" / "1234.56") to a plain decimal
  *  string like "1234.56"; empty input → null (clears the override). */
@@ -162,6 +163,19 @@ function parsePtBrDecimal(raw: string): string | null {
   const n = parseFloat(cleaned);
   if (!Number.isFinite(n)) return null;
   return String(n);
+}
+/** Currency mask: keep only digits, read them as cents, render pt-BR "1.234,56".
+ *  So the field accepts numbers only and always shows a money value. */
+function maskMoney(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  const cents = parseInt(digits, 10);
+  if (!Number.isFinite(cents)) return "";
+  return (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function onBaseInput(e: Event): void {
+  const el = e.target as HTMLInputElement;
+  el.value = maskMoney(el.value);
 }
 
 const ORIGIN_LABEL: Record<string, string> = {
@@ -509,10 +523,11 @@ async function confirmDelete(): Promise<void> {
                     <span class="rs">R$</span>
                     <input
                       class="base-input"
-                      inputmode="decimal"
+                      inputmode="numeric"
                       :value="baseInputValue(recMap.get(name)!)"
                       :placeholder="basePlaceholder(recMap.get(name)!)"
                       title="Valor usado nos meses ainda não importados (teto/projeção). Os dados reais importados sempre prevalecem. Deixe vazio para usar a média automática."
+                      @input="onBaseInput"
                       @keyup.enter="($event.target as HTMLInputElement).blur()"
                       @change="onBaseChange(name, $event)"
                     />
