@@ -334,3 +334,32 @@ export interface DerivedFixed {
   is_baseline: boolean;
   kind: EntryKind;
 }
+
+// ── Personal inflation detail (feature 011) ──
+export interface InflationContribution {
+  category: string;
+  weight: number;
+  inflacao: number;
+  contribuicao: number;
+}
+
+export interface PersonalInflationDetail {
+  gasto_total: string;
+  inflacao_pessoal: number;
+  inflacao_pessoal_pct: number;
+  inflacao_oficial: number;
+  /** Personal − official, in percentage points. */
+  diferenca_pp: number;
+  custo_atualizado: string;
+  aumento_cesta: string;
+  renda_corrigida: string;
+  aumento_renda: string;
+  renda_corrigida_consumo: string;
+  perda_poder_compra: string;
+  impacto_comportamental: number | null;
+  impacto_comportamental_pct: number | null;
+  consumo_adicional: string | null;
+  contribuicoes: InflationContribution[];
+  proveniencias: string[];
+  aviso: string;
+}

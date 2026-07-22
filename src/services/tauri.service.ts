@@ -17,6 +17,7 @@ import type {
   RecurringCategoryInfo,
   RecurringSuggestion,
   DerivedFixed,
+  PersonalInflationDetail,
 } from "@/types/api.types";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -392,6 +393,16 @@ export async function setRecurringBase(category: string, baseAmount: string | nu
 export async function listAllCategories(): Promise<string[]> {
   try {
     return await invoke<string[]>("list_all_categories");
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+/** Detailed personal-inflation breakdown (contributions, comparison, basket/income
+ *  impact, behavioral simulation). Null when no indices are cached or no spending. */
+export async function getPersonalInflationDetail(): Promise<PersonalInflationDetail | null> {
+  try {
+    return await invoke<PersonalInflationDetail | null>("get_personal_inflation_detail");
   } catch (e) {
     throw new Error(mapError(String(e)));
   }
