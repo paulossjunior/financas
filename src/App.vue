@@ -48,14 +48,27 @@ onErrorCaptured((err) => {
       <div class="nav-inner">
         <div class="brand"><span class="brand-mark">◍</span> Finanças</div>
         <div class="tabs">
-          <RouterLink to="/" active-class="active"><span class="ic">📊</span>Mês</RouterLink>
-          <RouterLink to="/ano" active-class="active"><span class="ic">📅</span>Ano</RouterLink>
-          <RouterLink to="/movimentacoes" active-class="active"><span class="ic">🔁</span>Extratos &amp; Faturas</RouterLink>
-          <RouterLink to="/transacoes" active-class="active"><span class="ic">🧾</span>Despesas</RouterLink>
-          <RouterLink to="/receitas-fixos" active-class="active"><span class="ic">💰</span>Fixos &amp; Renda</RouterLink>
-          <RouterLink to="/mapeamento" active-class="active"><span class="ic">🗂️</span>Mapeamento</RouterLink>
-          <RouterLink to="/importacoes" active-class="active"><span class="ic">📥</span>Importações</RouterLink>
-          <RouterLink to="/configuracoes" active-class="active"><span class="ic">⚙️</span>Configurações</RouterLink>
+          <RouterLink to="/" active-class="active">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Mês
+          </RouterLink>
+          <RouterLink to="/ano" active-class="active">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>Ano
+          </RouterLink>
+          <RouterLink to="/transacoes" active-class="active">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v12"/><path d="M3.5 12.5 7 16l3.5-3.5"/><path d="M17 20V8"/><path d="M13.5 11.5 17 8l3.5 3.5"/></svg>Despesas &amp; Receitas
+          </RouterLink>
+          <RouterLink to="/receitas-fixos" active-class="active">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Fixos &amp; Renda
+          </RouterLink>
+          <RouterLink to="/categorias" active-class="active">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>Categorias
+          </RouterLink>
+          <RouterLink to="/importacoes" active-class="active">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Importações
+          </RouterLink>
+          <RouterLink to="/configuracoes" active-class="active">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>Configurações
+          </RouterLink>
         </div>
       </div>
     </nav>
@@ -214,7 +227,8 @@ onErrorCaptured((err) => {
   align-items: center;
   gap: 0.4rem;
 }
-.tabs a .ic { font-size: 0.9rem; line-height: 1; }
+.tabs a .ic { width: 15px; height: 15px; flex: none; opacity: 0.9; }
+.tabs a.active .ic { opacity: 1; }
 .tabs a:hover {
   color: var(--clr-text-primary);
   background: var(--clr-surface-alt);

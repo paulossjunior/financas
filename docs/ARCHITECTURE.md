@@ -67,3 +67,13 @@ Plugins: `fs`, `dialog`, `store`, `opener`. Permissões em `src-tauri/capabiliti
 - **008 Extrato bancário**: `infrastructure/btg_statement.rs` (calamine .xls → linhas), `domain/bank_statement.rs` (parse + classificação: exclui fatura/salário-com-contracheque/transferências internas; categoriza app+fallback banco; dedup por UUIDv5), tabela `bank_entries`, `commands/bank.rs`; incluídos entram no pipeline como `ManualEntry` (avulso/renda). UI: `ExtratoPage` dentro de `ImportsPage` (📥 Importações) + dashboard `MovimentacoesPage` (Extratos & Faturas).
 
 Rede: única chamada externa é o fetch do IBGE (opt-in). Tudo mais é local.
+
+## Feature 010 — Categorias recorrentes + baseline + anti-duplicação
+
+- **Domínio** `domain/recurring.rs` (puro, testado): `RecurringCategory` (com vigência `start_month`/`end_month` e `base_amount` opcional), `Observation`/`DerivedFixed` (carregam `kind` crédito/débito), `derive_month` (realizado > valor base do usuário > média), `baseline` (média dos últimos 3 meses), `is_manual_superseded` (anti-duplicação, mesmo padrão payslip→salário) e `detect_suggestions` (recorrência provável, opt-in). O sinal (renda vs despesa) é **inferido do dado**.
+- **Aplicação** `application/recurring_fixed.rs`: monta `Observation`s do cartão (Fatura) + extrato (Extrato, crédito e débito), deriva contas fixas/rendas por mês, calcula baseline/origem/varia por categoria e as sugestões.
+- **Infra** `db.rs`: tabelas `recurring_categories` (+`base_amount`), `dismissed_recurring_suggestions`, `categories` (persiste nomes sem keyword), flag `bank_entries.user_categorized`; `recategorize_bank_entries` aplica as regras de keyword ao extrato (keyword vence, fallback BTG preservado, override manual respeitado).
+- **Comandos** `commands/recurring.rs`: `list_recurring_categories`, `set_category_recurring`, `set_recurring_base`, `list_all_categories`, `recurring_suggestions`, `dismiss_recurring_suggestion`, `list_fixed_expenses`.
+- **Integração**: `get_dashboard`/`year` reclassificam gasto de categoria recorrente do extrato como conta fixa e suprimem o fixo manual equivalente (anti-dup). Categorização unificada: keyword roda em **cartão + extrato** (recategorize + startup + ao criar keyword).
+- **UI**: nova página **🗂️ Categorias** (abas *Categorias & Regras* — Recorrente/vigência/valor base/origem + sugestões + modal de nova categoria + confirmação de exclusão — e *Mapeamento de despesas* — fila do "Outros" cartão+extrato, realce "recém-saído"). **Fixos & Renda** mostra as fixas/rendas derivadas. Nav "Despesas & Receitas".
+- **Skill** `.claude/skills/nielsen-heuristics/` para revisão de UI/UX.

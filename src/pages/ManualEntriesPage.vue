@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from "vue";
+import { onMounted, ref, computed, watch } from "vue";
 import { useInvoiceStore } from "@/stores/invoice.store";
 import { useSettingsStore } from "@/stores/settings.store";
-import { listPayslips } from "@/services/tauri.service";
-import type { EntryKind, ManualEntry, Payslip } from "@/types/api.types";
+import { listPayslips, listFixedExpenses } from "@/services/tauri.service";
+import { maskMoney, parseMoneyBR } from "@/utils/money";
+import type { EntryKind, ManualEntry, Payslip, DerivedFixed } from "@/types/api.types";
 
 const store = useInvoiceStore();
 const settings = useSettingsStore();
@@ -45,6 +46,19 @@ const categorySuggestions = computed(() =>
 const incomeEntries = computed(() => store.manualEntries.filter((e) => e.kind === "income"));
 const expenseEntries = computed(() => store.manualEntries.filter((e) => e.kind === "expense"));
 
+// Derived fixed expenses: categories marked recurring turn imported data (extrato/fatura)
+// into contas fixas automatically. Read-only here; edit recurrence in Categorias.
+const fixedMonth = ref(currentMonth());
+const derivedFixed = ref<DerivedFixed[]>([]);
+const derivedExpense = computed(() => derivedFixed.value.filter((f) => f.kind === "expense"));
+const derivedIncome = computed(() => derivedFixed.value.filter((f) => f.kind === "income"));
+const sumDerived = (list: DerivedFixed[]) => list.reduce((a, f) => a + (parseFloat(f.amount) || 0), 0);
+const ORIGIN_LABEL: Record<string, string> = { extrato: "Extrato", fatura: "Fatura", baseline: "Base", manual: "Manual" };
+async function loadDerived(): Promise<void> {
+  try { derivedFixed.value = await listFixedExpenses(fixedMonth.value); } catch { derivedFixed.value = []; }
+}
+watch(fixedMonth, loadDerived);
+
 const totalIncome = computed(() => sum(incomeEntries.value));
 const totalExpense = computed(() => sum(expenseEntries.value));
 
@@ -67,6 +81,7 @@ onMounted(async () => {
   await settings.loadConfig();
   await store.loadManualEntries();
   try { payslips.value = await listPayslips(); } catch { /* ignore */ }
+  await loadDerived();
 });
 
 function resetForm(): void {
@@ -84,7 +99,7 @@ function startEdit(e: ManualEntry): void {
   editingId.value = e.id;
   kind.value = e.kind;
   description.value = e.description;
-  amount.value = e.amount;
+  amount.value = (parseFloat(e.amount) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   category.value = e.category;
   month.value = e.month;
   recurring.value = e.recurring;
@@ -94,7 +109,7 @@ function startEdit(e: ManualEntry): void {
 
 async function submit(): Promise<void> {
   formError.value = null;
-  const amt = parseFloat(amount.value.replace(",", "."));
+  const amt = parseMoneyBR(amount.value);
   if (!description.value.trim()) { formError.value = "Informe uma descrição."; return; }
   if (!category.value.trim()) { formError.value = "Informe uma categoria."; return; }
   if (!(amt > 0)) { formError.value = "Informe um valor maior que zero."; return; }
@@ -150,6 +165,64 @@ async function remove(id: string): Promise<void> {
       <RouterLink class="sc-link" to="/contracheque">📄 {{ latestPayslip ? "Ver contracheques" : "Importar contracheque" }}</RouterLink>
     </div>
 
+    <!-- Derived fixed expenses from recurring categories (read-only) -->
+    <div class="card derived-card">
+      <div class="list-head">
+        <h2>Recorrentes derivados <span class="dv-mut">· do extrato / fatura · crédito e débito</span></h2>
+        <input v-model="fixedMonth" type="month" class="dv-month" aria-label="Mês das contas fixas derivadas" />
+      </div>
+      <p class="dv-note">
+        Categorias marcadas como <RouterLink to="/categorias">recorrentes</RouterLink> viram contas fixas automaticamente,
+        a partir do que foi importado — ou do <strong>valor base</strong> quando o mês ainda não tem dados. Contadas uma
+        vez só (não duplicam com os lançamentos manuais abaixo).
+      </p>
+      <template v-if="derivedFixed.length">
+        <!-- Receitas recorrentes (crédito) -->
+        <template v-if="derivedIncome.length">
+          <div class="dv-sub"><span class="income-text">↑ Receitas recorrentes</span></div>
+          <ul class="entry-list">
+            <li v-for="f in derivedIncome" :key="'in-' + f.category" class="entry">
+              <div class="entry-main">
+                <span class="entry-desc">{{ f.category }}</span>
+                <span class="entry-meta">
+                  <span class="chip">{{ ORIGIN_LABEL[f.origin] ?? f.origin }}</span>
+                  <span class="badge">{{ f.is_baseline ? "estimado (base)" : "realizado" }}</span>
+                </span>
+              </div>
+              <span class="entry-amount income-text">{{ formatBRL(f.amount) }}</span>
+            </li>
+          </ul>
+        </template>
+        <!-- Contas fixas (débito) -->
+        <template v-if="derivedExpense.length">
+          <div class="dv-sub"><span class="expense-text">↓ Contas fixas</span></div>
+          <ul class="entry-list">
+            <li v-for="f in derivedExpense" :key="'ex-' + f.category" class="entry">
+              <div class="entry-main">
+                <span class="entry-desc">{{ f.category }}</span>
+                <span class="entry-meta">
+                  <span class="chip">{{ ORIGIN_LABEL[f.origin] ?? f.origin }}</span>
+                  <span class="badge">{{ f.is_baseline ? "estimado (base)" : "realizado" }}</span>
+                </span>
+              </div>
+              <span class="entry-amount expense-text">{{ formatBRL(f.amount) }}</span>
+            </li>
+          </ul>
+        </template>
+        <div class="dv-total">
+          <span>{{ formatMonth(fixedMonth) }}</span>
+          <span class="dv-tots">
+            <span v-if="derivedIncome.length" class="income-text">+ {{ formatBRL(sumDerived(derivedIncome)) }}</span>
+            <strong class="expense-text">− {{ formatBRL(sumDerived(derivedExpense)) }}</strong>
+          </span>
+        </div>
+      </template>
+      <p v-else class="empty">
+        Nenhuma conta fixa/receita derivada em {{ formatMonth(fixedMonth) }}. Marque categorias como recorrentes em
+        <RouterLink to="/categorias">Categorias</RouterLink>.
+      </p>
+    </div>
+
     <!-- Form -->
     <div class="card form-card">
       <h2>{{ editingId ? "Editar lançamento" : "Novo lançamento" }}</h2>
@@ -177,7 +250,7 @@ async function remove(id: string): Promise<void> {
 
         <label class="field">
           <span>Valor (R$)</span>
-          <input v-model="amount" type="text" inputmode="decimal" placeholder="0,00" @keyup.enter="submit" />
+          <input v-model="amount" type="text" inputmode="numeric" placeholder="0,00" @input="amount = maskMoney(amount)" @keyup.enter="submit" />
         </label>
 
         <label class="field">
@@ -298,6 +371,19 @@ h1 { font-size: 1.25rem; font-weight: 600; color: var(--clr-text-primary); lette
 .sc-link:hover { text-decoration: underline; }
 .income-note { font-size: .78rem; color: var(--clr-text-muted); margin: 0 0 1rem; }
 .income-note a { color: var(--clr-accent); }
+
+/* Derived fixed expenses card */
+.derived-card { margin-bottom: 1rem; }
+.dv-mut { font-weight: 400; color: var(--clr-text-muted); font-size: 0.8rem; }
+.dv-month { font-family: var(--font-body); font-size: 0.8125rem; padding: 0.35rem 0.55rem; border: 1px solid var(--clr-stroke); border-radius: var(--radius-md); background: var(--clr-surface); color: var(--clr-text-primary); outline: none; }
+.dv-month:focus { border-color: var(--clr-accent); }
+.dv-note { font-size: 0.78rem; color: var(--clr-text-secondary); margin: 0 0 0.75rem; line-height: 1.5; }
+.dv-note a { color: var(--clr-accent); }
+.dv-note strong { color: var(--clr-text-primary); }
+.dv-total { display: flex; align-items: baseline; justify-content: space-between; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 2px solid var(--clr-stroke); font-size: 0.8125rem; font-weight: 600; color: var(--clr-text-secondary); }
+.dv-total strong { font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+.dv-tots { display: flex; gap: 1rem; align-items: baseline; font-variant-numeric: tabular-nums; }
+.dv-sub { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin: 0.6rem 0 0.15rem; }
 
 .card {
   background: var(--clr-surface);

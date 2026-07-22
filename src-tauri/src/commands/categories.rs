@@ -2,8 +2,26 @@ use std::sync::Mutex;
 use tauri::State;
 
 use crate::application::{recategorize::recategorize_invoices, store::SharedStore};
+use crate::domain::categorizer::Categorizer;
 use crate::domain::{AppConfig, CategoryRule};
 use crate::infrastructure::db::{persist, persist_config, SharedDb};
+
+/// Build a categorizer from config rules (or defaults when none are set).
+fn categorizer_from(config: &AppConfig) -> Categorizer {
+    if config.category_rules.is_empty() {
+        Categorizer::with_defaults()
+    } else {
+        Categorizer::new(config.category_rules.clone())
+    }
+}
+
+/// Apply the current keyword rules to the imported bank statement entries too, so a
+/// keyword categorizes card and extrato uniformly (credit and debit).
+fn recategorize_bank(db: &SharedDb, config: &AppConfig) {
+    if let Ok(mut d) = db.lock() {
+        let _ = d.recategorize_bank_entries(&categorizer_from(config));
+    }
+}
 
 #[tauri::command]
 pub async fn recategorize_invoices_cmd(
@@ -15,6 +33,7 @@ pub async fn recategorize_invoices_cmd(
     let changed = recategorize_invoices(&store, &config);
     let snapshot = store.lock().map_err(|e| e.to_string())?.list_owned();
     persist(&db, &snapshot);
+    recategorize_bank(&db, &config);
     Ok(changed)
 }
 
@@ -60,6 +79,7 @@ pub async fn add_category_keyword(
     let changed = recategorize_invoices(&store, &cfg_snapshot);
     let snapshot = store.lock().map_err(|e| e.to_string())?.list_owned();
     persist(&db, &snapshot);
+    recategorize_bank(&db, &cfg_snapshot);
     Ok(changed)
 }
 
