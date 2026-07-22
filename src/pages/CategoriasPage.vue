@@ -308,9 +308,24 @@ async function confirmNewCategory(): Promise<void> {
   showNewCat.value = false;
   flash(`Categoria "${name}" criada${newCatRecurring.value ? " · marcada como recorrente" : ". Adicione palavras-chave ou marque como recorrente."}`);
 }
-async function onDelete(name: string): Promise<void> {
+// Delete category (with confirmation)
+const deleteTarget = ref<string | null>(null);
+function askDelete(name: string): void {
+  deleteTarget.value = name;
+}
+function cancelDelete(): void {
+  deleteTarget.value = null;
+}
+async function confirmDelete(): Promise<void> {
+  const name = deleteTarget.value;
+  deleteTarget.value = null;
+  if (!name) return;
+  if (isRecurring(name)) {
+    try { await setCategoryRecurring(name, false); } catch { /* ignore */ }
+  }
   settings.deleteCategory(name);
   await persist();
+  flash(`Categoria "${name}" excluída.`);
 }
 </script>
 
@@ -406,7 +421,7 @@ async function onDelete(name: string): Promise<void> {
                       title="Renomear categoria"
                       @change="onRename(name, $event)"
                     />
-                    <button class="del" title="Excluir categoria" @click="onDelete(name)">✕</button>
+                    <button class="del" title="Excluir categoria" @click="askDelete(name)">✕</button>
                   </template>
                   <span
                     v-else
@@ -563,6 +578,21 @@ async function onDelete(name: string): Promise<void> {
         </div>
       </div>
     </div>
+
+    <!-- Delete category confirmation -->
+    <div v-if="deleteTarget" class="modal-overlay" @click.self="cancelDelete">
+      <div class="modal" role="dialog" aria-modal="true" aria-label="Excluir categoria">
+        <h3 class="modal-title">Excluir categoria?</h3>
+        <p class="modal-hint">
+          «<strong>{{ deleteTarget }}</strong>» será removida — junto com suas palavras-chave e a marcação de recorrente.
+          Os lançamentos afetados voltam para "Outros" e podem ser recategorizados.
+        </p>
+        <div class="modal-actions">
+          <button class="btn ghost" @click="cancelDelete">Cancelar</button>
+          <button class="btn danger" @click="confirmDelete">Excluir</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -624,6 +654,8 @@ h1 { font-size: 28px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 6
 .modal-err { color: var(--red); font-size: 12.5px; margin: 10px 0 0; }
 .modal-hint { color: var(--ink-3); font-size: 12px; margin: 10px 0 0; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+.btn.danger:hover { filter: brightness(0.94); }
 
 /* suggestion banner */
 .detect { display: flex; align-items: center; gap: 12px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: var(--radius); padding: 11px 14px; margin: 14px 0; flex-wrap: wrap; }

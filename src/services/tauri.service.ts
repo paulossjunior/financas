@@ -36,7 +36,10 @@ function mapError(raw: string): string {
     const cols = raw.replace("INVALID_FORMAT:", "");
     return `Formato inválido: colunas ausentes — ${cols}`;
   }
-  return `Erro inesperado: ${raw}`;
+  // Keep the technical detail in the console for debugging, but show the user a calm,
+  // actionable message instead of a raw error string.
+  console.error("[financas] erro inesperado:", raw);
+  return "Não foi possível concluir a operação. Tente novamente; se continuar, reinicie o app.";
 }
 
 export async function importInvoices(
