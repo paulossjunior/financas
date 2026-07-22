@@ -20,19 +20,23 @@ const outrosSum = computed(() => outrosList.value.reduce((a, t) => a + num(t.amo
 
 // Group uncategorized transactions by merchant (same derived keyword), largest first.
 // One row per merchant → categorizar uma vez aplica a todos os iguais.
-interface OutroGroup { key: string; count: number; sum: number; sample: string; date: string; }
+interface OutroGroup { key: string; count: number; sum: number; sample: string; date: string; isNew: boolean; }
 const outrosGroups = computed<OutroGroup[]>(() => {
   const m = new Map<string, OutroGroup>();
   for (const t of outrosList.value) { // outrosList already sorted by amount desc
     const k = merchantKey(t.description);
     if (!k) continue;
-    if (!m.has(k)) m.set(k, { key: k, count: 0, sum: 0, sample: t.description, date: t.date });
+    if (!m.has(k)) m.set(k, { key: k, count: 0, sum: 0, sample: t.description, date: t.date, isNew: false });
     const g = m.get(k)!;
     g.count++;
     g.sum += num(t.amount);
     if (t.date > g.date) g.date = t.date; // most recent occurrence
   }
-  return [...m.values()].sort((a, b) => b.sum - a.sum);
+  // Recently unmapped merchants (a keyword was just removed from a category) float to
+  // the top with a badge so they can be re-categorized right away.
+  return [...m.values()]
+    .map((g) => ({ ...g, isNew: settings.recentlyUnmapped.includes(g.key) }))
+    .sort((a, b) => (b.isNew ? 1 : 0) - (a.isNew ? 1 : 0) || b.sum - a.sum);
 });
 
 // per-merchant drafts: { [merchantKey]: { cat, kw } }
@@ -93,6 +97,7 @@ async function apply(g: OutroGroup): Promise<void> {
   try {
     const changed = await store.mapKeyword(kw, dr.cat.trim());
     okMsg.value = `"${kw}" → ${dr.cat.trim()} · ${changed} lançamento(s) recategorizado(s).`;
+    settings.clearUnmapped(g.key);
     await settings.loadConfig();
   } catch (e) {
     rowError.value = String(e instanceof Error ? e.message : e);
@@ -144,9 +149,9 @@ function shortDate(iso: string): string {
     <h2>Fila do "Outros" <span class="anno">maior valor primeiro · categorizar = vira palavra-chave</span></h2>
     <div class="card pad">
       <div v-if="!outrosList.length" class="empty-line">🎉 Tudo categorizado! Nenhum lançamento em "Outros".</div>
-      <div v-for="g in outrosGroups" :key="g.key" class="row">
+      <div v-for="g in outrosGroups" :key="g.key" class="row" :class="{ 'row-new': g.isNew }">
         <div class="info">
-          <div class="desc">{{ g.sample }}</div>
+          <div class="desc">{{ g.sample }} <span v-if="g.isNew" class="tag-new">recém-saído</span></div>
           <div class="meta">
             <span class="badge-count">{{ g.count }}×</span>
             {{ g.count > 1 ? "lançamentos" : "lançamento" }} · até {{ shortDate(g.date) }}
@@ -231,6 +236,8 @@ h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
 .row { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--line); }
 .row:last-child { border-bottom: none; }
+.row-new { background: color-mix(in srgb, var(--amber) 9%, transparent); }
+.tag-new { font-size: 10px; font-weight: 700; color: var(--amber); background: color-mix(in srgb, var(--amber) 16%, transparent); padding: 1px 7px; border-radius: 100px; margin-left: 6px; vertical-align: middle; }
 .info { min-width: 0; }
 .desc { font-size: 13.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meta { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
