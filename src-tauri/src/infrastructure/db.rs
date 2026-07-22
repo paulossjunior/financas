@@ -283,13 +283,13 @@ impl Database {
                 ))
             })
             .map_err(|e| e.to_string())?;
-        let mut grouped: HashMap<String, (u8, Vec<String>)> = HashMap::new();
+        let mut grouped: HashMap<String, (u32, Vec<String>)> = HashMap::new();
         let mut order: Vec<String> = Vec::new();
         for r in rows {
             let (category, keyword, priority) = r.map_err(|e| e.to_string())?;
             let entry = grouped.entry(category.clone()).or_insert_with(|| {
                 order.push(category.clone());
-                (priority as u8, Vec::new())
+                (priority as u32, Vec::new())
             });
             entry.1.push(keyword);
         }
