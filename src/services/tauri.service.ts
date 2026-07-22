@@ -1,3 +1,4 @@
+// Single Tauri IPC boundary — typed wrappers around every backend command (the only file that calls invoke).
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppConfig,

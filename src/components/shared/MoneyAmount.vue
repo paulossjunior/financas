@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Shared component formatting a money string as BRL with positive/negative styling.
 const { amount } = defineProps<{ amount: string; showSign?: boolean }>();
 
 function format(val: string): string {

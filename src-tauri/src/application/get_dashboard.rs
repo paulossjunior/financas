@@ -1,3 +1,6 @@
+//! Application use-case: assemble the month dashboard — apply the filter to the
+//! invoice store, fold in manual entries and payslips, then call the domain aggregator.
+
 use std::collections::BTreeSet;
 
 use crate::domain::dashboard::ManualAgg;

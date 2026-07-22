@@ -1,3 +1,5 @@
+//! Commands: OS keychain access for the saved invoice password (check / clear).
+
 use crate::infrastructure::secrets;
 
 /// Whether an invoice password is saved in the OS keychain.

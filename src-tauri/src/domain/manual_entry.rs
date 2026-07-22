@@ -1,3 +1,6 @@
+//! Domain: [`ManualEntry`] — a cash movement outside the credit card (fixed bills
+//! or income), tagged by [`EntryKind`] (income/expense).
+
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};

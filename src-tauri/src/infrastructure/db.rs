@@ -1,3 +1,7 @@
+//! Infrastructure: SQLite persistence (rusqlite) — the app's source of truth. Owns
+//! the schema and migrations, plus load/persist for invoices, config, manual entries,
+//! payslips, bank entries and recurring categories.
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::str::FromStr;

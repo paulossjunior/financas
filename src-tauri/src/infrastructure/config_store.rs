@@ -1,3 +1,6 @@
+//! Infrastructure: the legacy `config.json` store — load/save [`AppConfig`] on disk.
+//! Superseded by the SQLite config table; kept for migration of older installs.
+
 use std::path::PathBuf;
 use crate::domain::AppConfig;
 

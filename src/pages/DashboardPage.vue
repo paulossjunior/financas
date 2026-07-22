@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Dashboard page — the monthly financial overview (KPIs, category charts, inflation, forecast).
 import { onMounted, ref, computed } from "vue";
 import { useInvoiceStore } from "@/stores/invoice.store";
 import { useSettingsStore } from "@/stores/settings.store";

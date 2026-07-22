@@ -1,3 +1,7 @@
+//! Tauri application entry point: builds the app, wires shared state (invoice store,
+//! SQLite database, config), runs the startup DB migration + recategorize pass, and
+//! registers every `#[tauri::command]` handler.
+
 mod application;
 mod commands;
 pub mod domain;

@@ -1,3 +1,6 @@
+//! Commands: payslips (contracheque) at the Tauri boundary — import/preview a PDF,
+//! save, list and remove.
+
 use std::path::PathBuf;
 use tauri::State;
 

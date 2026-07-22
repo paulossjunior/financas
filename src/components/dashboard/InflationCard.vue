@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Dashboard card comparing IPCA vs. personal inflation, with a fetch-IPCA refresh action.
 import { computed, onMounted, ref } from "vue";
 import { getInflation, fetchIpca } from "@/services/tauri.service";
 import type { InflationData } from "@/types/api.types";

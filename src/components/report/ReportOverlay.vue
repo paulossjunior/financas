@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Full-screen overlay that renders a printable/standalone report with inlined CSS.
 import { onMounted, onUnmounted, ref } from "vue";
 import reportCss from "@/assets/report.css?raw";
 

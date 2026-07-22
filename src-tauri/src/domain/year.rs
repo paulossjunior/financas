@@ -1,3 +1,6 @@
+//! Domain: annual aggregation. Rolls twelve months of invoices, manual entries and
+//! payslips into the [`YearSummary`] DTO for the year view.
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::Datelike;

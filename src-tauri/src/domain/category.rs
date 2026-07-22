@@ -1,3 +1,6 @@
+//! Domain: category model and per-category aggregation of transactions
+//! ([`Category`], [`TransactionSummary`], [`aggregate_by_category`]).
+
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};

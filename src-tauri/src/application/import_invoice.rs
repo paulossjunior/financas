@@ -1,3 +1,6 @@
+//! Application use-case: import a BTG `.xlsx` invoice — parse the sheet, map rows to
+//! transactions, categorize them, and add the resulting [`Invoice`] to the store.
+
 use std::path::Path;
 use chrono::Local;
 use serde::{Deserialize, Serialize};

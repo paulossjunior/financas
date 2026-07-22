@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Import button — opens a file picker for .xlsx invoices and emits the chosen paths.
 import { ref } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 

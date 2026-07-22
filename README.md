@@ -155,6 +155,7 @@ specs/                   # especificações por feature (spec-kit)
 ```
 
 Detalhes de arquitetura e fluxo de dados em [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Guia de manutenção (invariantes, receitas, release, armadilhas) em [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md).
 
 ---
 

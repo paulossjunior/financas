@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Dashboard treemap of category spend (name/value items) with a color palette.
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import VChart from "vue-echarts";
 import { use } from "echarts/core";

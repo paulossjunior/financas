@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Settings page (Configurações) — invoice folder path and saved-password (Keychain) options.
 import { onMounted, ref } from "vue";
 import { useSettingsStore } from "@/stores/settings.store";
 import { hasSavedPassword, clearSavedPassword } from "@/services/tauri.service";

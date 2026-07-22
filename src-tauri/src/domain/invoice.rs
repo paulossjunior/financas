@@ -1,3 +1,6 @@
+//! Domain: the [`Invoice`] model (a month's card statement with its transactions)
+//! and the [`YearMonth`] value type.
+
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

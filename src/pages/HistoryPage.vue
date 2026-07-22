@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Faturas history page — import card invoices (.xlsx) and browse/remove them grouped by month.
 import { onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ask } from "@tauri-apps/plugin-dialog";

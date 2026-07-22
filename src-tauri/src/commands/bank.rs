@@ -1,3 +1,6 @@
+//! Commands: bank statement (extrato) import at the Tauri boundary — preview, save,
+//! list, remove and recategorize bank entries.
+
 use std::collections::HashSet;
 use std::sync::Mutex;
 

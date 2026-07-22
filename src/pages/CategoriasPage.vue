@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Categorias page — tabs for recurring-category rules and the "Outros" mapping queue (embeds MappingPage).
 import { onMounted, ref, computed } from "vue";
 import { useSettingsStore } from "@/stores/settings.store";
 import { useInvoiceStore } from "@/stores/invoice.store";

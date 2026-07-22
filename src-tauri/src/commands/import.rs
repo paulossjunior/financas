@@ -1,3 +1,6 @@
+//! Commands: import BTG card invoices (`.xlsx`) at the Tauri boundary — handles the
+//! optional password and persists the result.
+
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::State;

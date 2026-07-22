@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// History group of invoices for one month; emits filter-month and remove-invoice.
 import type { MonthGroup } from "@/types/api.types";
 import InvoiceRow from "./InvoiceRow.vue";
 

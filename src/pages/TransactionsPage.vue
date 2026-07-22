@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Transactions page (Despesas & Receitas) — unified movements list assembled from every source (card, fixed, avulso, payslip, extrato).
 import { ref, computed, watch, onMounted } from "vue";
 import type { Transaction, ManualEntry, BankEntry, Payslip } from "@/types/api.types";
 import {

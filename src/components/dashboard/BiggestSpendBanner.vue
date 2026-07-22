@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Dashboard banner highlighting the single biggest-spend category.
 import type { Category } from "@/types/api.types";
 
 defineProps<{ category: Category }>();

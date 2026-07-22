@@ -12,6 +12,7 @@ monthly dashboard, an annual view, and PDF reports. 100% local, no network.
 
 - **README**: [README.md](README.md) — features, install, dev, build, CI/CD.
 - **Architecture**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — layers, data/money model, flows, DB, commands.
+- **Maintenance**: [docs/MAINTENANCE.md](docs/MAINTENANCE.md) — invariants, how-to recipes, DB, release, gotchas.
 - **Specs** (spec-kit): `specs/001-credit-card-dashboard`, `002-monthly-invoice-list`,
   `003-custom-categories`, `004-payslips-annual-reports` (contracheque, ano, avulsos, relatórios).
 

@@ -1,3 +1,6 @@
+//! Domain layer root: pure business models and rules (no Tauri, no DB). Re-exports
+//! each submodule's public types and defines [`AppConfig`], the app's config model.
+
 pub mod bank_statement;
 pub mod category;
 pub mod categorizer;

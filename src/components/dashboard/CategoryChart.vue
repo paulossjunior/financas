@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Dashboard pie chart of spend by category.
 import { computed } from "vue";
 import VChart from "vue-echarts";
 import { use } from "echarts/core";

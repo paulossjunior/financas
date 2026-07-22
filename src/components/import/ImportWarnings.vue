@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Displays parse warnings raised during an import.
 import type { ParseWarning } from "@/types/api.types";
 
 defineProps<{ warnings: ParseWarning[] }>();

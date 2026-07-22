@@ -1,3 +1,6 @@
+//! Commands: inflation at the Tauri boundary — fetch IPCA data and compute the
+//! user's personal inflation from their category spend weights.
+
 use std::str::FromStr;
 use std::sync::Mutex;
 

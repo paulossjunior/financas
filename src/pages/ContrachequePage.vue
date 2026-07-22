@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// Contracheque page — import SouGov.br payslip PDFs and browse/remove imported payslips.
 import { onMounted, ref, computed } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import { importPayslip, savePayslip, listPayslips, removePayslip } from "@/services/tauri.service";

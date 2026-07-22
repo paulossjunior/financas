@@ -1,3 +1,6 @@
+//! Domain: the [`Transaction`] model — one card-invoice line item, with optional
+//! [`InstallmentInfo`] (parcela x/N).
+
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
