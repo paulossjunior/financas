@@ -332,4 +332,5 @@ export interface DerivedFixed {
   amount: string;
   origin: FixedOrigin;
   is_baseline: boolean;
+  kind: EntryKind;
 }

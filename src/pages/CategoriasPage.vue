@@ -28,6 +28,13 @@ const allCategoryNames = ref<string[]>([]);
 const search = ref("");
 const onlyRecurring = ref(false);
 
+// transient feedback (e.g. after removing a keyword)
+const msg = ref<string | null>(null);
+function flash(m: string): void {
+  msg.value = m;
+  window.setTimeout(() => { if (msg.value === m) msg.value = null; }, 8000);
+}
+
 // inline keyword add: which category is currently accepting a new keyword
 const addingFor = ref<string | null>(null);
 const newKw = ref("");
@@ -257,6 +264,7 @@ function cancelAdd(): void {
 async function removeKw(name: string, kw: string): Promise<void> {
   settings.removeKeyword(name, kw);
   await persist();
+  flash(`Palavra-chave "${kw}" removida de ${name}. Os lançamentos que dependiam dela voltaram para "Outros" — recategorize na aba Mapeamento de despesas.`);
 }
 function focusEl(vnode: { el?: HTMLElement | null }): void {
   vnode.el?.focus();
@@ -270,8 +278,15 @@ async function onRename(oldName: string, e: Event): Promise<void> {
   await persist();
 }
 async function onNewCategory(): Promise<void> {
-  settings.addCategory("Nova Categoria");
+  const name = (window.prompt("Nome da nova categoria:") || "").trim();
+  if (!name) return;
+  if (allNames.value.some((n) => n.toLowerCase() === name.toLowerCase())) {
+    flash(`A categoria "${name}" já existe.`);
+    return;
+  }
+  settings.addCategory(name);
   await persist();
+  flash(`Categoria "${name}" criada. Adicione palavras-chave ou marque como recorrente.`);
 }
 async function onDelete(name: string): Promise<void> {
   settings.deleteCategory(name);
@@ -310,6 +325,11 @@ async function onDelete(name: string): Promise<void> {
     <!-- ── TAB 1: Categorias & Regras ── -->
     <div v-show="activeTab === 'regras'" class="tabpane">
       <div v-if="settings.error" class="msg err">⚠ {{ settings.error }}</div>
+
+      <div v-if="msg" class="msg ok">
+        <span>✓ {{ msg }}</span>
+        <button class="msg-link" @click="activeTab = 'mapeamento'">Ir para Mapeamento →</button>
+      </div>
 
       <!-- suggestion banners -->
       <div v-for="s in suggestions" :key="s.category" class="detect">
@@ -539,6 +559,9 @@ h1 { font-size: 28px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 6
 
 .msg { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin: 12px 0; }
 .msg.err { background: var(--red-soft); color: var(--red); border: 1px solid var(--red); }
+.msg.ok { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.msg.ok .msg-link { margin-left: auto; font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 7px; padding: 4px 10px; cursor: pointer; white-space: nowrap; }
+.msg.ok .msg-link:hover { background: var(--accent); color: #fff; }
 
 /* suggestion banner */
 .detect { display: flex; align-items: center; gap: 12px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: var(--radius); padding: 11px 14px; margin: 14px 0; flex-wrap: wrap; }
