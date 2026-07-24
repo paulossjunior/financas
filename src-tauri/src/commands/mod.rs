@@ -1,5 +1,6 @@
 //! Commands layer root: the `#[tauri::command]` boundary, one submodule per area.
 
+pub mod backup;
 pub mod bank;
 pub mod categories;
 pub mod config;

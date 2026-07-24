@@ -363,3 +363,14 @@ export interface PersonalInflationDetail {
   proveniencias: string[];
   aviso: string;
 }
+
+// ── Backup & restore (feature 012) ──
+export interface BackupResult {
+  /** Full path of the backup file that was written. */
+  path: string;
+}
+
+export interface RestoreResult {
+  /** Full path of the safety copy of the previous database (to revert if needed). */
+  backupOfPrevious: string;
+}

@@ -1,13 +1,25 @@
 <script setup lang="ts">
 // Settings page (Configurações) — invoice folder path and saved-password (Keychain) options.
 import { onMounted, ref } from "vue";
+import { open, ask } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "@/stores/settings.store";
-import { hasSavedPassword, clearSavedPassword } from "@/services/tauri.service";
+import {
+  hasSavedPassword,
+  clearSavedPassword,
+  backupDatabase,
+  restoreDatabase,
+} from "@/services/tauri.service";
 
 const store = useSettingsStore();
 
 const pwSaved = ref(false);
 const pwBusy = ref(false);
+
+// Backup & restore (feature 012)
+const backupBusy = ref(false);
+const restoreBusy = ref(false);
+const dbMsg = ref(""); // success feedback (backup path)
+const dbErr = ref(""); // error feedback
 
 onMounted(async () => {
   await store.loadConfig();
@@ -25,6 +37,47 @@ async function forgetPassword(): Promise<void> {
     pwSaved.value = false;
   } finally {
     pwBusy.value = false;
+  }
+}
+
+async function doBackup(): Promise<void> {
+  dbMsg.value = "";
+  dbErr.value = "";
+  const dir = await open({ directory: true, title: "Escolha a pasta para o backup" });
+  if (typeof dir !== "string") return; // cancelled
+  backupBusy.value = true;
+  try {
+    const res = await backupDatabase(dir);
+    dbMsg.value = `Backup salvo em: ${res.path}`;
+  } catch (e) {
+    dbErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    backupBusy.value = false;
+  }
+}
+
+async function doRestore(): Promise<void> {
+  dbMsg.value = "";
+  dbErr.value = "";
+  const file = await open({
+    multiple: false,
+    title: "Escolha o arquivo de backup",
+    filters: [{ name: "Backup do Finanças", extensions: ["db"] }],
+  });
+  if (typeof file !== "string") return; // cancelled
+  const ok = await ask(
+    "Isto substitui todos os dados atuais pelos do backup. Uma cópia de segurança da base atual é guardada automaticamente antes, para você poder reverter. Deseja continuar?",
+    { title: "Restaurar backup", kind: "warning", okLabel: "Restaurar", cancelLabel: "Cancelar" }
+  );
+  if (!ok) return;
+  restoreBusy.value = true;
+  try {
+    await restoreDatabase(file);
+    // Reload so every page refetches from the restored database.
+    window.location.reload();
+  } catch (e) {
+    dbErr.value = e instanceof Error ? e.message : String(e);
+    restoreBusy.value = false;
   }
 }
 </script>
@@ -74,6 +127,35 @@ async function forgetPassword(): Promise<void> {
               {{ pwBusy ? "Removendo…" : "Esquecer senha" }}
             </button>
           </div>
+        </div>
+      </section>
+
+      <div class="divider" />
+
+      <section class="section">
+        <h2>Backup e restauração</h2>
+        <div class="field">
+          <label>Cópia de segurança dos dados</label>
+          <p class="field-hint">
+            Gera uma cópia completa da base (faturas, contracheques, categorias e lançamentos)
+            numa pasta à sua escolha. Ao restaurar, a base atual é substituída pela do backup —
+            uma cópia de segurança da base atual é guardada automaticamente antes, para você poder
+            reverter. Tudo local, sem internet.
+          </p>
+          <div class="db-row">
+            <button class="db-btn" :disabled="backupBusy || restoreBusy" @click="doBackup">
+              {{ backupBusy ? "Fazendo backup…" : "Fazer backup" }}
+            </button>
+            <button
+              class="db-btn db-btn--warn"
+              :disabled="backupBusy || restoreBusy"
+              @click="doRestore"
+            >
+              {{ restoreBusy ? "Restaurando…" : "Restaurar backup" }}
+            </button>
+          </div>
+          <p v-if="dbMsg" class="db-feedback db-feedback--ok">✓ {{ dbMsg }}</p>
+          <p v-if="dbErr" class="db-feedback db-feedback--err">⚠ {{ dbErr }}</p>
         </div>
       </section>
 
@@ -153,6 +235,28 @@ label { font-size: 0.875rem; font-weight: 600; color: var(--clr-text-primary); }
 }
 .forget-btn:hover:not(:disabled) { background: rgba(209,52,56,0.08); }
 .forget-btn:disabled { opacity: 0.6; cursor: default; }
+
+.db-row { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.25rem; }
+.db-btn {
+  padding: 0.45rem 1rem;
+  background: var(--clr-surface);
+  color: var(--clr-text-primary);
+  border: 1px solid var(--clr-stroke);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  transition: background 0.1s, border-color 0.1s;
+  white-space: nowrap;
+}
+.db-btn:hover:not(:disabled) { border-color: var(--clr-accent); }
+.db-btn:disabled { opacity: 0.6; cursor: default; }
+.db-btn--warn { color: var(--clr-negative); border-color: var(--clr-negative); }
+.db-btn--warn:hover:not(:disabled) { background: rgba(209,52,56,0.08); border-color: var(--clr-negative); }
+.db-feedback { font-size: 0.8125rem; font-weight: 500; margin-top: 0.6rem; word-break: break-all; }
+.db-feedback--ok { color: var(--clr-positive, #107c10); }
+.db-feedback--err { color: var(--clr-negative); }
 
 .actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .msg-bar {

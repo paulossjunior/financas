@@ -13,6 +13,7 @@ use tauri::Manager;
 use application::store::shared_store_with;
 use infrastructure::db::{new_shared_db, Database};
 use commands::{
+    backup::{backup_database, restore_database},
     bank::{clear_bank_entries, import_bank_statement, list_bank_entries, preview_bank_statement, remove_bank_entry, save_bank_statement, set_bank_entry_category},
     categories::{add_category_keyword, override_transaction_category, recategorize_invoices_cmd, remove_transaction_override},
     config::{get_config, save_config},
@@ -149,6 +150,8 @@ pub fn run() {
             recurring_suggestions,
             dismiss_recurring_suggestion,
             list_fixed_expenses,
+            backup_database,
+            restore_database,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

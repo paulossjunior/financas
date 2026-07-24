@@ -19,6 +19,8 @@ import type {
   RecurringSuggestion,
   DerivedFixed,
   PersonalInflationDetail,
+  BackupResult,
+  RestoreResult,
 } from "@/types/api.types";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -28,6 +30,11 @@ const ERROR_MESSAGES: Record<string, string> = {
   NO_DATA: "Nenhuma fatura importada. Importe um arquivo para continuar.",
   INVOICE_NOT_FOUND: "Fatura não encontrada.",
   DUPLICATE_INVOICE: "Fatura já importada — substituída com os dados mais recentes.",
+  INVALID_BACKUP:
+    "Arquivo inválido: não é um backup da base do Financas. A base atual não foi alterada.",
+  BACKUP_DIR_INVALID: "Pasta de destino inválida. Escolha uma pasta existente.",
+  BACKUP_FAILED: "Não foi possível gravar o backup. Verifique permissões e espaço em disco.",
+  RESTORE_FAILED: "Não foi possível concluir a restauração. A base anterior foi preservada.",
 };
 
 function mapError(raw: string): string {
@@ -404,6 +411,27 @@ export async function listAllCategories(): Promise<string[]> {
 export async function getPersonalInflationDetail(): Promise<PersonalInflationDetail | null> {
   try {
     return await invoke<PersonalInflationDetail | null>("get_personal_inflation_detail");
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+// ── Backup & restore (feature 012) ──
+
+/** Back up the whole database into `destDir`; returns the file path written. */
+export async function backupDatabase(destDir: string): Promise<BackupResult> {
+  try {
+    return await invoke<BackupResult>("backup_database", { destDir });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+/** Replace the current database with the one at `sourcePath` (validated first; the
+ *  previous data is saved to a safety copy). Caller should reload the app on success. */
+export async function restoreDatabase(sourcePath: string): Promise<RestoreResult> {
+  try {
+    return await invoke<RestoreResult>("restore_database", { sourcePath });
   } catch (e) {
     throw new Error(mapError(String(e)));
   }
