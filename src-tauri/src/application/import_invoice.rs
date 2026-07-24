@@ -157,7 +157,6 @@ mod tests {
 
         // First import: no overrides — get real transaction ID
         let no_override_config = AppConfig {
-            faturas_directory: "faturas".into(),
             category_rules: vec![],
             transaction_overrides: HashMap::new(),
             manual_entries: vec![],
@@ -173,7 +172,6 @@ mod tests {
         let mut overrides = HashMap::new();
         overrides.insert(first_tx_id.clone(), "TestOverrideCategory".to_string());
         let override_config = AppConfig {
-            faturas_directory: "faturas".into(),
             category_rules: vec![],
             transaction_overrides: overrides,
             manual_entries: vec![],

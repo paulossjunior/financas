@@ -76,7 +76,6 @@ mod tests {
         store.lock().unwrap().add(invoice);
 
         let config = AppConfig {
-            faturas_directory: "faturas".into(),
             category_rules: vec![
                 CategoryRule { keywords: vec!["IFOOD".into()], category: "Alimentação".into(), priority: 10 },
                 CategoryRule { keywords: vec!["NETFLIX".into()], category: "Lazer".into(), priority: 20 },
@@ -106,7 +105,6 @@ mod tests {
         overrides.insert(tx_id.clone(), "Educação".to_string());
 
         let config = AppConfig {
-            faturas_directory: "faturas".into(),
             category_rules: vec![
                 CategoryRule { keywords: vec!["AMAZON".into()], category: "Compras".into(), priority: 10 },
             ],
