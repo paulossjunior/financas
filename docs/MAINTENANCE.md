@@ -99,6 +99,19 @@ Crie `domain/<x>.rs` puro, escreva os testes primeiro (`#[cfg(test)]`), registre
 `inputmode="numeric"` + `@input="campo = maskMoney(campo)"`; no submit `parseMoneyBR(campo)`.
 Prefill de edição: formate com `toLocaleString("pt-BR",{minimumFractionDigits:2})`.
 
+### Backup/restauração da base (feature 012)
+Comandos `backup_database`/`restore_database` (`commands/backup.rs`) sobre
+`Database` (`infrastructure/db.rs`):
+- **Backup**: `backup_to(dir)` usa `VACUUM INTO` (snapshot consistente com a conexão
+  aberta) → `financas-backup-<YYYYMMDD-HHMMSS>.db` (sufixo `-N` se colidir; nunca sobrescreve).
+- **Restauração**: `validate_backup(path)` (integrity_check + tabelas centrais) → grava
+  cópia de segurança `financas-pre-restore-<ts>.db` ao lado de `financas.db` → fecha a
+  conexão, `fs::copy` o arquivo, reabre + `init()` (migra esquema antigo) → retorna o
+  caminho da cópia de segurança. O comando recarrega o estado em memória (`Mutex<AppConfig>`
+  + `SharedStore` via `replace_all`) e o front faz `window.location.reload()`.
+- Diálogos: pasta via `open({ directory:true })`, arquivo via `open({ filters:[...] })`
+  (`dialog:allow-open` já cobre ambos). UI na tela Configurações; restauração pede `ask()`.
+
 ## Mapa de features (spec-kit)
 
 | Spec | O que |

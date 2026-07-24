@@ -37,6 +37,15 @@ impl InvoiceStore {
         self.invoices.remove(id).is_some()
     }
 
+    /// Replace the whole store with a fresh set of invoices (used after a database
+    /// restore, so in-memory state matches the swapped-in database).
+    pub fn replace_all(&mut self, invoices: Vec<Invoice>) {
+        self.invoices.clear();
+        for inv in invoices {
+            self.invoices.insert(inv.id, inv);
+        }
+    }
+
     pub fn list(&self) -> Vec<&Invoice> {
         let mut list: Vec<&Invoice> = self.invoices.values().collect();
         list.sort_by_key(|i| &i.reference_month);
