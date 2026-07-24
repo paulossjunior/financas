@@ -8,7 +8,9 @@ import {
   clearSavedPassword,
   backupDatabase,
   restoreDatabase,
+  setImportDirectory,
 } from "@/services/tauri.service";
+import type { FolderImportSummary } from "@/types/api.types";
 
 const store = useSettingsStore();
 
@@ -20,6 +22,17 @@ const backupBusy = ref(false);
 const restoreBusy = ref(false);
 const dbMsg = ref(""); // success feedback (backup path)
 const dbErr = ref(""); // error feedback
+
+// Auto-import folder (feature 013)
+const importBusy = ref(false);
+const importMsg = ref("");
+const importErr = ref("");
+
+function summaryText(s: FolderImportSummary): string {
+  const parts = [`${s.faturas} fatura(s)`, `${s.extratos} extrato(s)`];
+  if (s.ignored.length) parts.push(`${s.ignored.length} ignorado(s)`);
+  return `Importado: ${parts.join(", ")}.`;
+}
 
 onMounted(async () => {
   await store.loadConfig();
@@ -37,6 +50,37 @@ async function forgetPassword(): Promise<void> {
     pwSaved.value = false;
   } finally {
     pwBusy.value = false;
+  }
+}
+
+async function chooseImportFolder(): Promise<void> {
+  importMsg.value = "";
+  importErr.value = "";
+  const dir = await open({ directory: true, title: "Escolha a pasta de importação" });
+  if (typeof dir !== "string") return; // cancelled
+  importBusy.value = true;
+  try {
+    const summary = await setImportDirectory(dir);
+    store.config.import_directory = dir;
+    if (summary) importMsg.value = summaryText(summary);
+  } catch (e) {
+    importErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    importBusy.value = false;
+  }
+}
+
+async function clearImportFolder(): Promise<void> {
+  importMsg.value = "";
+  importErr.value = "";
+  importBusy.value = true;
+  try {
+    await setImportDirectory(null);
+    store.config.import_directory = null;
+  } catch (e) {
+    importErr.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    importBusy.value = false;
   }
 }
 
@@ -90,18 +134,35 @@ async function doRestore(): Promise<void> {
 
     <div class="card">
       <section class="section">
-        <h2>Importação</h2>
+        <h2>Importação automática</h2>
 
         <div class="field">
-          <label for="faturas-dir">Pasta das Faturas</label>
-          <p class="field-hint">Caminho relativo ao diretório do app onde as faturas XLSX são procuradas.</p>
-          <input
-            id="faturas-dir"
-            v-model="store.config.faturas_directory"
-            type="text"
-            placeholder="faturas/"
-            class="text-input"
-          />
+          <label>Pasta de importação</label>
+          <p class="field-hint">
+            Escolha uma pasta com suas faturas (.xlsx) e extratos (.xls). Ao definir, o app
+            importa o que já está lá; e toda vez que abrir, importa automaticamente os arquivos
+            novos dessa pasta — identificando sozinho o que é fatura e o que é extrato, sem
+            duplicar o que já foi importado.
+          </p>
+          <div class="db-row">
+            <button class="db-btn" :disabled="importBusy" @click="chooseImportFolder">
+              {{ importBusy ? "Importando…" : "Escolher pasta" }}
+            </button>
+            <button
+              v-if="store.config.import_directory"
+              class="db-btn"
+              :disabled="importBusy"
+              @click="clearImportFolder"
+            >
+              Limpar
+            </button>
+          </div>
+          <p v-if="store.config.import_directory" class="field-path">
+            Pasta atual: {{ store.config.import_directory }}
+          </p>
+          <p v-else class="field-path">Nenhuma pasta — importação manual apenas.</p>
+          <p v-if="importMsg" class="db-feedback db-feedback--ok">✓ {{ importMsg }}</p>
+          <p v-if="importErr" class="db-feedback db-feedback--err">⚠ {{ importErr }}</p>
         </div>
       </section>
 
@@ -198,6 +259,7 @@ h1 { font-size: 1.25rem; font-weight: 600; color: var(--clr-text-primary); lette
 .field { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.5rem; }
 label { font-size: 0.875rem; font-weight: 600; color: var(--clr-text-primary); }
 .field-hint { font-size: 0.75rem; color: var(--clr-text-muted); margin-bottom: 0.5rem; }
+.field-path { font-size: 0.8125rem; color: var(--clr-text-secondary); margin-top: 0.5rem; word-break: break-all; }
 .text-input {
   padding: 0.45rem 0.75rem;
   border: 1px solid var(--clr-stroke);

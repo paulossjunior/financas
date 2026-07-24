@@ -157,10 +157,10 @@ mod tests {
 
         // First import: no overrides — get real transaction ID
         let no_override_config = AppConfig {
-            faturas_directory: "faturas".into(),
             category_rules: vec![],
             transaction_overrides: HashMap::new(),
             manual_entries: vec![],
+            import_directory: None,
         };
         let mut store = InvoiceStore::new();
         import_invoice(&fixture, &mut store, &no_override_config, None).expect("first import failed");
@@ -172,10 +172,10 @@ mod tests {
         let mut overrides = HashMap::new();
         overrides.insert(first_tx_id.clone(), "TestOverrideCategory".to_string());
         let override_config = AppConfig {
-            faturas_directory: "faturas".into(),
             category_rules: vec![],
             transaction_overrides: overrides,
             manual_entries: vec![],
+            import_directory: None,
         };
         let mut store2 = InvoiceStore::new();
         import_invoice(&fixture, &mut store2, &override_config, None).expect("second import failed");

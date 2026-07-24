@@ -27,7 +27,6 @@ describe("useSettingsStore", () => {
   describe("categoryGroups computed", () => {
     it("groups category_rules by category name into CategoryGroups", async () => {
       mockGetConfig.mockResolvedValue({
-        faturas_directory: "faturas",
         category_rules: [
           { keywords: ["IFOOD", "RESTAURANTE"], category: "Alimentação", priority: 10 },
           { keywords: ["UBER"], category: "Transporte", priority: 20 },
@@ -47,7 +46,6 @@ describe("useSettingsStore", () => {
 
     it("pre-fills defaults when category_rules is empty", async () => {
       mockGetConfig.mockResolvedValue({
-        faturas_directory: "faturas",
         category_rules: [],
         transaction_overrides: {},
         manual_entries: [],
@@ -66,7 +64,6 @@ describe("useSettingsStore", () => {
   describe("addCategory", () => {
     it("appends a new CategoryGroup with empty keywords", async () => {
       mockGetConfig.mockResolvedValue({
-        faturas_directory: "faturas",
         category_rules: [],
         transaction_overrides: {},
         manual_entries: [],
@@ -88,7 +85,6 @@ describe("useSettingsStore", () => {
   describe("deleteCategory", () => {
     it("removes the category group by name", async () => {
       mockGetConfig.mockResolvedValue({
-        faturas_directory: "faturas",
         category_rules: [
           { keywords: ["UBER"], category: "Transporte", priority: 20 },
         ],
@@ -109,7 +105,6 @@ describe("useSettingsStore", () => {
   describe("renameCategory", () => {
     it("updates the name of a category group", async () => {
       mockGetConfig.mockResolvedValue({
-        faturas_directory: "faturas",
         category_rules: [
           { keywords: ["IFOOD"], category: "Alimentação", priority: 10 },
         ],
@@ -131,7 +126,6 @@ describe("useSettingsStore", () => {
   describe("saveCategories", () => {
     it("calls saveConfig with updated rules then recategorizeInvoices", async () => {
       mockGetConfig.mockResolvedValue({
-        faturas_directory: "faturas",
         category_rules: [],
         transaction_overrides: {},
         manual_entries: [],

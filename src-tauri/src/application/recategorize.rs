@@ -76,13 +76,13 @@ mod tests {
         store.lock().unwrap().add(invoice);
 
         let config = AppConfig {
-            faturas_directory: "faturas".into(),
             category_rules: vec![
                 CategoryRule { keywords: vec!["IFOOD".into()], category: "Alimentação".into(), priority: 10 },
                 CategoryRule { keywords: vec!["NETFLIX".into()], category: "Lazer".into(), priority: 20 },
             ],
             transaction_overrides: HashMap::new(),
             manual_entries: vec![],
+            import_directory: None,
         };
 
         let changed = recategorize_invoices(&store, &config);
@@ -105,12 +105,12 @@ mod tests {
         overrides.insert(tx_id.clone(), "Educação".to_string());
 
         let config = AppConfig {
-            faturas_directory: "faturas".into(),
             category_rules: vec![
                 CategoryRule { keywords: vec!["AMAZON".into()], category: "Compras".into(), priority: 10 },
             ],
             transaction_overrides: overrides,
             manual_entries: vec![],
+            import_directory: None,
         };
 
         let changed = recategorize_invoices(&store, &config);

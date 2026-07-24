@@ -246,11 +246,13 @@ impl Database {
             .map_err(|e| e.to_string())?;
         }
 
-        tx.execute(
-            "INSERT INTO settings (key, value) VALUES ('faturas_directory', ?1)",
-            params![cfg.faturas_directory],
-        )
-        .map_err(|e| e.to_string())?;
+        if let Some(dir) = cfg.import_directory.as_deref().filter(|s| !s.is_empty()) {
+            tx.execute(
+                "INSERT INTO settings (key, value) VALUES ('import_directory', ?1)",
+                params![dir],
+            )
+            .map_err(|e| e.to_string())?;
+        }
 
         for rule in &cfg.category_rules {
             for kw in &rule.keywords {
@@ -293,14 +295,16 @@ impl Database {
 
     /// Load full config from the database.
     pub fn load_config(&self) -> Result<AppConfig, String> {
-        let faturas_directory: String = self
+        let import_directory: Option<String> = self
             .conn
             .query_row(
-                "SELECT value FROM settings WHERE key = 'faturas_directory'",
+                "SELECT value FROM settings WHERE key = 'import_directory'",
                 [],
-                |r| r.get(0),
+                |r| r.get::<_, String>(0),
             )
-            .unwrap_or_else(|_| "faturas".to_string());
+            .optional()
+            .map_err(|e| e.to_string())?
+            .filter(|s| !s.is_empty());
 
         // category_rules grouped by category
         let mut stmt = self
@@ -399,10 +403,10 @@ impl Database {
         }
 
         Ok(AppConfig {
-            faturas_directory,
             category_rules,
             transaction_overrides,
             manual_entries,
+            import_directory,
         })
     }
 
@@ -1070,7 +1074,6 @@ mod tests {
         assert!(db.config_is_empty());
 
         let cfg = AppConfig {
-            faturas_directory: "faturas".into(),
             category_rules: vec![CategoryRule {
                 keywords: vec!["IFOOD".into(), "RESTAURANTE".into()],
                 category: "Alimentação".into(),
@@ -1085,12 +1088,12 @@ mod tests {
                 "2026-06".into(),
                 true,
             )],
+            import_directory: None,
         };
         db.save_config(&cfg).unwrap();
         assert!(!db.config_is_empty());
 
         let loaded = db.load_config().unwrap();
-        assert_eq!(loaded.faturas_directory, "faturas");
         assert_eq!(loaded.category_rules.len(), 1);
         assert_eq!(loaded.category_rules[0].category, "Alimentação");
         assert_eq!(loaded.category_rules[0].keywords.len(), 2);
