@@ -10,6 +10,7 @@ pub mod infrastructure;
 use std::sync::Mutex;
 use tauri::Manager;
 
+use application::import_folder::import_from_folder;
 use application::store::shared_store_with;
 use infrastructure::db::{new_shared_db, Database};
 use commands::{
@@ -18,7 +19,7 @@ use commands::{
     categories::{add_category_keyword, override_transaction_category, recategorize_invoices_cmd, remove_transaction_override},
     config::{get_config, save_config},
     dashboard::{get_dashboard_cmd, get_year_summary_cmd, list_invoices, remove_invoice},
-    import::import_invoices,
+    import::{get_startup_import_summary, import_invoices, set_import_directory},
     inflation::{fetch_ipca, get_inflation, get_personal_inflation_detail},
     manual_entries::{add_manual_entry, list_manual_entries, remove_manual_entry, update_manual_entry},
     payslips::{import_payslip, list_payslips, remove_payslip, save_payslip},
@@ -105,9 +106,25 @@ pub fn run() {
                 let _ = db.recategorize_bank_entries(&categorizer);
             }
 
+            let db_shared = new_shared_db(db);
+            let store_shared = shared_store_with(invoices);
+
+            // Feature 013: if an import folder is configured, scan + import it on startup.
+            // Never fatal — a missing/unreadable folder yields a summary with an error item.
+            let startup_summary = config
+                .import_directory
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .map(|dir| {
+                    let pw = crate::infrastructure::secrets::get_password();
+                    import_from_folder(std::path::Path::new(dir), &db_shared, &store_shared, &config, pw.as_deref())
+                })
+                .filter(|s| !s.is_empty());
+
             app.manage(Mutex::new(config));
-            app.manage(shared_store_with(invoices));
-            app.manage(new_shared_db(db));
+            app.manage(store_shared);
+            app.manage(db_shared);
+            app.manage(Mutex::new(startup_summary));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -152,6 +169,8 @@ pub fn run() {
             list_fixed_expenses,
             backup_database,
             restore_database,
+            set_import_directory,
+            get_startup_import_summary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

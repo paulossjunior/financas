@@ -161,6 +161,7 @@ mod tests {
             category_rules: vec![],
             transaction_overrides: HashMap::new(),
             manual_entries: vec![],
+            import_directory: None,
         };
         let mut store = InvoiceStore::new();
         import_invoice(&fixture, &mut store, &no_override_config, None).expect("first import failed");
@@ -176,6 +177,7 @@ mod tests {
             category_rules: vec![],
             transaction_overrides: overrides,
             manual_entries: vec![],
+            import_directory: None,
         };
         let mut store2 = InvoiceStore::new();
         import_invoice(&fixture, &mut store2, &override_config, None).expect("second import failed");

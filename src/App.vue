@@ -1,8 +1,20 @@
 <script setup lang="ts">
 import { RouterView, RouterLink } from "vue-router";
-import { ref, onErrorCaptured } from "vue";
+import { ref, onErrorCaptured, onMounted } from "vue";
+import { getStartupImportSummary } from "@/services/tauri.service";
 
 const globalError = ref<string | null>(null);
+const importToast = ref<string | null>(null);
+
+// Feature 013: show a discreet summary of the folder auto-import that ran at startup.
+onMounted(async () => {
+  const s = await getStartupImportSummary();
+  if (!s) return;
+  const parts = [`${s.faturas} fatura(s)`, `${s.extratos} extrato(s)`];
+  if (s.ignored.length) parts.push(`${s.ignored.length} ignorado(s)`);
+  importToast.value = `Importação automática: ${parts.join(", ")}.`;
+  setTimeout(() => (importToast.value = null), 8000);
+});
 
 const ERROR_MESSAGES: Record<string, string> = {
   ENCRYPTED_FILE: "Arquivo protegido por senha. Abra no Excel ou Numbers, remova a proteção e salve novamente.",
@@ -76,6 +88,11 @@ onErrorCaptured((err) => {
     <div v-if="globalError" class="global-error" role="alert">
       <span>⚠️ {{ globalError }}</span>
       <button class="dismiss" @click="globalError = null" aria-label="Fechar">✕</button>
+    </div>
+
+    <div v-if="importToast" class="import-toast" role="status">
+      <span>📥 {{ importToast }}</span>
+      <button class="dismiss" @click="importToast = null" aria-label="Fechar">✕</button>
     </div>
 
     <main>
@@ -265,6 +282,20 @@ onErrorCaptured((err) => {
   line-height: 1;
 }
 .dismiss:hover { background: rgba(185,28,28,0.1); }
+
+.import-toast {
+  background: var(--clr-accent-soft, #eef4fb);
+  border-bottom: 1px solid var(--clr-accent, #3182ce);
+  color: var(--clr-accent, #3182ce);
+  padding: 0.65rem 2rem;
+  font-size: 0.8125rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.import-toast .dismiss { color: var(--clr-accent, #3182ce); }
+.import-toast .dismiss:hover { background: rgba(49,130,206,0.1); }
 
 main { flex: 1; }
 

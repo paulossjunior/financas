@@ -289,6 +289,8 @@ export interface AppConfig {
   category_rules: CategoryRule[];
   transaction_overrides: Record<string, string>;
   manual_entries: ManualEntry[];
+  /** Single folder auto-imported on startup (feature 013). Null/absent = disabled. */
+  import_directory?: string | null;
 }
 
 export interface CategoryGroup {
@@ -373,4 +375,19 @@ export interface BackupResult {
 export interface RestoreResult {
   /** Full path of the safety copy of the previous database (to revert if needed). */
   backupOfPrevious: string;
+}
+
+// ── Auto-import folder (feature 013) ──
+export interface IgnoredFile {
+  name: string;
+  /** NOT_RECOGNIZED | ENCRYPTED_NO_PASSWORD | ERROR: <detail> */
+  reason: string;
+}
+
+export interface FolderImportSummary {
+  faturas: number;
+  extratos: number;
+  entries: number;
+  ignored: IgnoredFile[];
+  directory: string;
 }

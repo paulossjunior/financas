@@ -112,6 +112,19 @@ Comandos `backup_database`/`restore_database` (`commands/backup.rs`) sobre
 - Diálogos: pasta via `open({ directory:true })`, arquivo via `open({ filters:[...] })`
   (`dialog:allow-open` já cobre ambos). UI na tela Configurações; restauração pede `ask()`.
 
+### Pasta de importação automática (feature 013)
+Setting `import_directory` (`Option<String>` no `AppConfig`; vazio = desligado).
+`application/import_folder.rs::import_from_folder(dir, db, store, cfg, senha)`:
+- **Detecção de tipo**: `.xls` → extrato; `.xlsx` → tenta fatura (`import_invoice`),
+  se `INVALID_FORMAT`/`PARSE_ERROR` cai para extrato (`read_statement`). Falha em ambos
+  → item em `ignored` (não aborta a varredura). Fatura cifrada sem senha salva → ignorada.
+- **Dedup** herdado: fatura por `invoice_id` (nome) + `store.add`; extrato por `BankEntry.id`.
+  Classificação de extrato compartilhada via `domain::bank_statement::classify_statement`.
+- **Gatilhos**: `set_import_directory` (definir/limpar + importar na hora, retorna
+  `FolderImportSummary`); no boot (`lib.rs setup`) se a pasta existe, roda e guarda o
+  resumo em `Mutex<Option<FolderImportSummary>>`. `get_startup_import_summary` lê+limpa
+  (App.vue mostra toast). Pasta ausente/ilegível não trava — vira item de erro no resumo.
+
 ## Mapa de features (spec-kit)
 
 | Spec | O que |
