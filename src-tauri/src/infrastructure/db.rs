@@ -3,12 +3,12 @@
 //! payslips, bank entries and recurring categories.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
-use chrono::{NaiveDate, NaiveDateTime};
-use rusqlite::{params, Connection, OptionalExtension};
+use chrono::{Local, NaiveDate, NaiveDateTime};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
@@ -35,6 +35,9 @@ fn parse_money(field: &str, s: &str) -> Decimal {
 /// Config (rules, overrides, manual entries) stays in config.json.
 pub struct Database {
     conn: Connection,
+    /// Absolute path of the SQLite file backing `conn`. Empty for in-memory DBs (tests).
+    /// Backup/restore need it to know the source/target file without an `AppHandle`.
+    path: PathBuf,
 }
 
 pub type SharedDb = Arc<Mutex<Database>>;
@@ -45,7 +48,7 @@ const DATETIME_FMT: &str = "%Y-%m-%dT%H:%M:%S";
 impl Database {
     pub fn open(path: &Path) -> Result<Self, String> {
         let conn = Connection::open(path).map_err(|e| e.to_string())?;
-        let db = Self { conn };
+        let db = Self { conn, path: path.to_path_buf() };
         db.init()?;
         Ok(db)
     }
@@ -53,7 +56,7 @@ impl Database {
     #[cfg(test)]
     pub fn open_in_memory() -> Result<Self, String> {
         let conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
-        let db = Self { conn };
+        let db = Self { conn, path: PathBuf::new() };
         db.init()?;
         Ok(db)
     }
@@ -870,6 +873,99 @@ impl Database {
             .map_err(|e| e.to_string())?;
         Ok(())
     }
+
+    // ── Backup & restore (feature 012) ──
+
+    /// Write a consistent snapshot of the live database to `dest` via `VACUUM INTO`.
+    /// Safe with the connection open — unlike a raw file copy, it never captures a
+    /// half-written page. `dest` must not already exist (VACUUM INTO refuses to overwrite).
+    fn vacuum_into(&self, dest: &Path) -> Result<(), String> {
+        self.conn
+            .execute("VACUUM INTO ?1", params![dest.to_string_lossy()])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Back up the whole database into `dest_dir` as
+    /// `financas-backup-<YYYYMMDD-HHMMSS>.db` (suffixed `-N` if that name is taken,
+    /// so successive backups never overwrite each other). Returns the file written.
+    pub fn backup_to(&self, dest_dir: &Path) -> Result<PathBuf, String> {
+        if !dest_dir.is_dir() {
+            return Err("BACKUP_DIR_INVALID".to_string());
+        }
+        let stem = format!("financas-backup-{}", Local::now().format("%Y%m%d-%H%M%S"));
+        let dest = unique_path(dest_dir, &stem);
+        self.vacuum_into(&dest).map_err(|e| format!("BACKUP_FAILED: {e}"))?;
+        Ok(dest)
+    }
+
+    /// Validate that `path` is a restorable app database: passes SQLite integrity check
+    /// and contains the app's core tables. Never mutates anything. Associated fn so the
+    /// caller can validate a candidate before touching the live DB.
+    pub fn validate_backup(path: &Path) -> Result<(), String> {
+        if !path.is_file() {
+            return Err("FILE_NOT_FOUND".to_string());
+        }
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|_| "INVALID_BACKUP".to_string())?;
+        let integrity: String = conn
+            .query_row("PRAGMA integrity_check", [], |r| r.get(0))
+            .map_err(|_| "INVALID_BACKUP".to_string())?;
+        if integrity != "ok" {
+            return Err("INVALID_BACKUP".to_string());
+        }
+        for table in ["invoices", "transactions", "settings"] {
+            let found: i64 = conn
+                .query_row(
+                    "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                    params![table],
+                    |r| r.get(0),
+                )
+                .map_err(|_| "INVALID_BACKUP".to_string())?;
+            if found == 0 {
+                return Err("INVALID_BACKUP".to_string());
+            }
+        }
+        Ok(())
+    }
+
+    /// Replace the live database with the one at `src`, after validating it and saving a
+    /// `financas-pre-restore-<ts>.db` copy of the current data next to it (so the user can
+    /// revert). Returns the path of that safety copy. On validation failure the live DB is
+    /// left untouched. Reopens the connection on the restored file and re-runs migrations.
+    pub fn restore_from(&mut self, src: &Path) -> Result<PathBuf, String> {
+        Self::validate_backup(src)?;
+
+        // Safety copy of the CURRENT database before we overwrite it.
+        let dir = self.path.parent().unwrap_or_else(|| Path::new("."));
+        let stem = format!("financas-pre-restore-{}", Local::now().format("%Y%m%d-%H%M%S"));
+        let safety = unique_path(dir, &stem);
+        self.vacuum_into(&safety).map_err(|e| format!("RESTORE_FAILED: {e}"))?;
+
+        // Close the current connection (drop it) so the file can be overwritten (Windows).
+        let tmp = Connection::open_in_memory().map_err(|e| format!("RESTORE_FAILED: {e}"))?;
+        let old = std::mem::replace(&mut self.conn, tmp);
+        drop(old);
+
+        std::fs::copy(src, &self.path).map_err(|e| format!("RESTORE_FAILED: {e}"))?;
+
+        // Reopen on the restored file; init() migrations bring an older schema up to date.
+        self.conn = Connection::open(&self.path).map_err(|e| format!("RESTORE_FAILED: {e}"))?;
+        self.init().map_err(|e| format!("RESTORE_FAILED: {e}"))?;
+        Ok(safety)
+    }
+}
+
+/// First free path of the form `<dir>/<stem>.db`, then `<stem>-1.db`, `<stem>-2.db`, …
+/// Avoids clobbering an existing backup (e.g. two backups in the same second).
+fn unique_path(dir: &Path, stem: &str) -> PathBuf {
+    let mut candidate = dir.join(format!("{stem}.db"));
+    let mut n = 1;
+    while candidate.exists() {
+        candidate = dir.join(format!("{stem}-{n}.db"));
+        n += 1;
+    }
+    candidate
 }
 
 fn entry_kind_str(k: EntryKind) -> &'static str {
@@ -1002,5 +1098,100 @@ mod tests {
         assert_eq!(loaded.manual_entries.len(), 1);
         assert_eq!(loaded.manual_entries[0].kind, EntryKind::Income);
         assert_eq!(loaded.manual_entries[0].amount, dec!(8000));
+    }
+
+    // ── Backup & restore (feature 012) ──
+
+    #[test]
+    fn backup_to_creates_valid_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Database::open(&dir.path().join("financas.db")).unwrap();
+        db.save_all(&[make_invoice()]).unwrap();
+
+        let dest = dir.path().join("backups");
+        std::fs::create_dir_all(&dest).unwrap();
+        let backup = db.backup_to(&dest).unwrap();
+
+        assert!(backup.exists());
+        assert!(backup.starts_with(&dest));
+        // The copy opens as a database and holds the same data.
+        let restored = Database::open(&backup).unwrap();
+        let invs = restored.load_invoices().unwrap();
+        assert_eq!(invs.len(), 1);
+        assert_eq!(invs[0].transactions.len(), 1);
+    }
+
+    #[test]
+    fn backup_to_rejects_non_directory() {
+        let db = Database::open_in_memory().unwrap();
+        assert_eq!(db.backup_to(Path::new("/no/such/dir")), Err("BACKUP_DIR_INVALID".into()));
+    }
+
+    #[test]
+    fn backup_to_never_overwrites_previous() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(&dir.path().join("financas.db")).unwrap();
+        let b1 = db.backup_to(dir.path()).unwrap();
+        let b2 = db.backup_to(dir.path()).unwrap();
+        assert_ne!(b1, b2);
+        assert!(b1.exists() && b2.exists());
+    }
+
+    #[test]
+    fn validate_backup_accepts_app_db_and_rejects_others() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("financas.db");
+        drop(Database::open(&db_path).unwrap()); // create app schema
+        assert!(Database::validate_backup(&db_path).is_ok());
+
+        let missing = dir.path().join("nope.db");
+        assert_eq!(Database::validate_backup(&missing), Err("FILE_NOT_FOUND".into()));
+
+        let junk = dir.path().join("junk.db");
+        std::fs::write(&junk, b"this is not a sqlite database").unwrap();
+        assert_eq!(Database::validate_backup(&junk), Err("INVALID_BACKUP".into()));
+
+        let empty = dir.path().join("empty.db");
+        {
+            let c = Connection::open(&empty).unwrap();
+            c.execute("CREATE TABLE foo (x)", []).unwrap();
+        }
+        assert_eq!(Database::validate_backup(&empty), Err("INVALID_BACKUP".into()));
+    }
+
+    #[test]
+    fn restore_from_swaps_db_and_preserves_previous() {
+        let dir = tempfile::tempdir().unwrap();
+        let cur_path = dir.path().join("financas.db");
+        let mut cur = Database::open(&cur_path).unwrap();
+        cur.save_all(&[make_invoice()]).unwrap(); // current state: 1 invoice
+
+        // Source backup with a distinct (empty) state.
+        let src_path = dir.path().join("source.db");
+        drop(Database::open(&src_path).unwrap());
+
+        assert_eq!(cur.load_invoices().unwrap().len(), 1);
+        let safety = cur.restore_from(&src_path).unwrap();
+
+        // Live DB now reflects the source (0 invoices).
+        assert!(safety.exists());
+        assert_eq!(cur.load_invoices().unwrap().len(), 0);
+        // The safety copy still holds the previous state (1 invoice) → revertible.
+        let prev = Database::open(&safety).unwrap();
+        assert_eq!(prev.load_invoices().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn restore_from_rejects_invalid_source_without_touching_db() {
+        let dir = tempfile::tempdir().unwrap();
+        let cur_path = dir.path().join("financas.db");
+        let mut cur = Database::open(&cur_path).unwrap();
+        cur.save_all(&[make_invoice()]).unwrap();
+
+        let junk = dir.path().join("junk.db");
+        std::fs::write(&junk, b"garbage").unwrap();
+        assert_eq!(cur.restore_from(&junk), Err("INVALID_BACKUP".into()));
+        // Live DB untouched.
+        assert_eq!(cur.load_invoices().unwrap().len(), 1);
     }
 }
