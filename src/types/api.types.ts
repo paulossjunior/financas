@@ -285,7 +285,6 @@ export interface CategoryRule {
 }
 
 export interface AppConfig {
-  faturas_directory: string;
   category_rules: CategoryRule[];
   transaction_overrides: Record<string, string>;
   manual_entries: ManualEntry[];

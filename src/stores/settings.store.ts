@@ -41,7 +41,6 @@ function groupsToRules(groups: CategoryGroup[]) {
 
 export const useSettingsStore = defineStore("settings", () => {
   const config = ref<AppConfig>({
-    faturas_directory: "faturas",
     category_rules: [],
     transaction_overrides: {},
     manual_entries: [],
