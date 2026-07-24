@@ -1096,11 +1096,13 @@ function refLabel(): string {
   --shadow: var(--shadow-sm);
 
   padding: 1.75rem 2rem 4rem;
-  max-width: 1320px;
+  max-width: var(--page-max, 1560px);
   margin: 0 auto;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
+@media (min-width: 1700px) { .dash { --page-max: 1760px; } }
+@media (min-width: 2100px) { .dash { --page-max: 1960px; } }
 
 /* Header */
 .top { margin-bottom: 1.25rem; }

@@ -191,7 +191,7 @@ onErrorCaptured((err) => {
   box-shadow: 0 1px 0 rgba(20,33,30,.02);
 }
 .nav-inner {
-  max-width: 1320px;
+  max-width: var(--page-max, 1560px);
   margin: 0 auto;
   padding: 0 2rem;
   display: flex;
@@ -199,6 +199,8 @@ onErrorCaptured((err) => {
   gap: 2rem;
   height: 60px;
 }
+@media (min-width: 1700px) { .nav-inner { max-width: 1760px; } }
+@media (min-width: 2100px) { .nav-inner { max-width: 1960px; } }
 .brand {
   display: flex;
   align-items: center;
