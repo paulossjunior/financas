@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::State;
 
-use crate::domain::bank_statement::{classify_entry, holder_key, BankEntry, ClassifiedEntry, ParsedStatement};
+use crate::domain::bank_statement::{classify_statement, BankEntry, ClassifiedEntry, ParsedStatement};
 use crate::domain::{AppConfig, Categorizer};
 use crate::infrastructure::btg_statement::read_statement;
 use crate::infrastructure::db::SharedDb;
@@ -37,12 +37,7 @@ fn classify_all(
         .iter()
         .map(|p| p.month.clone())
         .collect();
-    let hk = holder_key(&parsed.holder);
-    let classified = parsed
-        .entries
-        .iter()
-        .map(|e| classify_entry(e, &parsed.account, &hk, payslip_months.contains(&e.month), &cz))
-        .collect();
+    let classified = classify_statement(&parsed, &cz, &payslip_months);
     Ok((parsed, classified))
 }
 

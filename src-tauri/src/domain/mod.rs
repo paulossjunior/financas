@@ -15,7 +15,7 @@ pub mod recurring;
 pub mod transaction;
 pub mod year;
 
-pub use bank_statement::{classify_entry, entry_id, holder_key, parse_statement_rows, BankEntry, ClassifiedEntry, ParsedStatement, RawEntry};
+pub use bank_statement::{classify_entry, classify_statement, entry_id, holder_key, parse_statement_rows, BankEntry, ClassifiedEntry, ParsedStatement, RawEntry};
 pub use category::{aggregate_by_category, Category, TransactionSummary};
 pub use categorizer::{CategoryRule, Categorizer};
 pub use dashboard::{compute_dashboard, DashboardData, DashboardFilter};
@@ -39,6 +39,10 @@ pub struct AppConfig {
     /// Cash movements outside the credit card: fixed bills and income.
     #[serde(default)]
     pub manual_entries: Vec<ManualEntry>,
+    /// Single folder the app auto-imports invoices and bank statements from.
+    /// `None`/empty = feature disabled (manual import only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub import_directory: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -48,6 +52,7 @@ impl Default for AppConfig {
             category_rules: vec![],
             transaction_overrides: HashMap::new(),
             manual_entries: vec![],
+            import_directory: None,
         }
     }
 }

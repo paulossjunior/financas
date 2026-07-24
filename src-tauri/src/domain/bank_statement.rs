@@ -4,6 +4,7 @@
 //! already counts (card bill, salary when a payslip exists, internal transfers),
 //! and categorizes the rest (app rules, BTG category as fallback).
 
+use std::collections::HashSet;
 use std::str::FromStr;
 
 use rust_decimal::Decimal;
@@ -256,6 +257,22 @@ pub fn classify_entry(
 /// Normalized holder name for matching (exposed for the command layer).
 pub fn holder_key(holder: &str) -> String {
     norm(holder)
+}
+
+/// Classify every entry of a parsed statement (app rules + BTG fallback), marking
+/// which are included vs dropped. Shared by the manual-preview command and the
+/// folder auto-importer so both apply identical rules.
+pub fn classify_statement(
+    parsed: &ParsedStatement,
+    categorizer: &Categorizer,
+    payslip_months: &HashSet<String>,
+) -> Vec<ClassifiedEntry> {
+    let hk = holder_key(&parsed.holder);
+    parsed
+        .entries
+        .iter()
+        .map(|e| classify_entry(e, &parsed.account, &hk, payslip_months.contains(&e.month), categorizer))
+        .collect()
 }
 
 #[cfg(test)]

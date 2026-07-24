@@ -83,6 +83,7 @@ mod tests {
             ],
             transaction_overrides: HashMap::new(),
             manual_entries: vec![],
+            import_directory: None,
         };
 
         let changed = recategorize_invoices(&store, &config);
@@ -111,6 +112,7 @@ mod tests {
             ],
             transaction_overrides: overrides,
             manual_entries: vec![],
+            import_directory: None,
         };
 
         let changed = recategorize_invoices(&store, &config);

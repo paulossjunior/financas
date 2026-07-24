@@ -252,6 +252,14 @@ impl Database {
         )
         .map_err(|e| e.to_string())?;
 
+        if let Some(dir) = cfg.import_directory.as_deref().filter(|s| !s.is_empty()) {
+            tx.execute(
+                "INSERT INTO settings (key, value) VALUES ('import_directory', ?1)",
+                params![dir],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+
         for rule in &cfg.category_rules {
             for kw in &rule.keywords {
                 tx.execute(
@@ -301,6 +309,17 @@ impl Database {
                 |r| r.get(0),
             )
             .unwrap_or_else(|_| "faturas".to_string());
+
+        let import_directory: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'import_directory'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+            .filter(|s| !s.is_empty());
 
         // category_rules grouped by category
         let mut stmt = self
@@ -403,6 +422,7 @@ impl Database {
             category_rules,
             transaction_overrides,
             manual_entries,
+            import_directory,
         })
     }
 
@@ -1085,6 +1105,7 @@ mod tests {
                 "2026-06".into(),
                 true,
             )],
+            import_directory: None,
         };
         db.save_config(&cfg).unwrap();
         assert!(!db.config_is_empty());

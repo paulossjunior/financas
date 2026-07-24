@@ -45,6 +45,7 @@ export const useSettingsStore = defineStore("settings", () => {
     category_rules: [],
     transaction_overrides: {},
     manual_entries: [],
+    import_directory: null,
   });
   const groups = ref<CategoryGroup[]>([]);
   const saving = ref(false);
