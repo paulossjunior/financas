@@ -21,6 +21,7 @@ import type {
   PersonalInflationDetail,
   BackupResult,
   RestoreResult,
+  FolderImportSummary,
 } from "@/types/api.types";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -35,6 +36,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   BACKUP_DIR_INVALID: "Pasta de destino inválida. Escolha uma pasta existente.",
   BACKUP_FAILED: "Não foi possível gravar o backup. Verifique permissões e espaço em disco.",
   RESTORE_FAILED: "Não foi possível concluir a restauração. A base anterior foi preservada.",
+  IMPORT_DIR_INVALID: "Pasta inválida. Escolha uma pasta existente no computador.",
 };
 
 function mapError(raw: string): string {
@@ -434,5 +436,26 @@ export async function restoreDatabase(sourcePath: string): Promise<RestoreResult
     return await invoke<RestoreResult>("restore_database", { sourcePath });
   } catch (e) {
     throw new Error(mapError(String(e)));
+  }
+}
+
+// ── Auto-import folder (feature 013) ──
+
+/** Set (or clear, with null) the auto-import folder. When set to a valid folder, the
+ *  backend scans and imports it immediately and returns a summary. */
+export async function setImportDirectory(dir: string | null): Promise<FolderImportSummary | null> {
+  try {
+    return await invoke<FolderImportSummary | null>("set_import_directory", { dir: dir || null });
+  } catch (e) {
+    throw new Error(mapError(String(e)));
+  }
+}
+
+/** Read + clear the summary of the auto-import that ran at startup (null if none). */
+export async function getStartupImportSummary(): Promise<FolderImportSummary | null> {
+  try {
+    return await invoke<FolderImportSummary | null>("get_startup_import_summary");
+  } catch {
+    return null;
   }
 }
