@@ -27,7 +27,8 @@ impl Product {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Product> {
+    /// Inverse of [`Self::as_str`] — reads the value persisted in SQLite.
+    pub fn parse(s: &str) -> Option<Product> {
         match s {
             "corrente" => Some(Product::Corrente),
             "poupanca" => Some(Product::Poupanca),

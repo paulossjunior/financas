@@ -198,7 +198,7 @@ pub fn parse_statement_rows(rows: &[Vec<String>]) -> ParsedStatement {
                 (parse_date(&cell(r, c_date)), parse_amount(&cell(r, c_val)))
             {
                 if let Ok(d) = date.parse::<chrono::NaiveDate>() {
-                    if last_daily.map_or(true, |(prev, _)| d > prev) {
+                    if last_daily.is_none_or(|(prev, _)| d > prev) {
                         last_daily = Some((d, balance));
                     }
                 }

@@ -857,7 +857,7 @@ impl Database {
                 id,
                 bank,
                 account,
-                product: Product::from_str(&product)
+                product: Product::parse(&product)
                     .ok_or_else(|| format!("produto desconhecido: {product}"))?,
                 balance: balance.parse().map_err(|e| format!("saldo inválido: {e}"))?,
                 as_of: as_of.parse().map_err(|e| format!("data inválida: {e}"))?,
