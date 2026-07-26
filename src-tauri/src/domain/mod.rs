@@ -32,7 +32,7 @@ pub use year::{compute_year_summary, YearSummary};
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AppConfig {
     pub category_rules: Vec<CategoryRule>,
     #[serde(default)]
@@ -44,17 +44,6 @@ pub struct AppConfig {
     /// `None`/empty = feature disabled (manual import only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub import_directory: Option<String>,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            category_rules: vec![],
-            transaction_overrides: HashMap::new(),
-            manual_entries: vec![],
-            import_directory: None,
-        }
-    }
 }
 
 #[cfg(test)]
