@@ -8,6 +8,7 @@ pub mod config_store;
 pub mod db;
 pub mod ibge;
 pub mod invoice_reader;
+pub mod santander_invoice;
 pub mod secrets;
 pub mod statement_reader;
 pub mod xlsx_parser;

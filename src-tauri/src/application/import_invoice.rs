@@ -67,7 +67,7 @@ pub fn import_invoice(
         Categorizer::new(cat_rules)
     };
 
-    let (transactions, raw_warnings) = reader
+    let read = reader
         .read(path, password, invoice_id, &categorizer)
         .map_err(|e| match e {
             InvoiceReadError::Encrypted => ImportError::Encrypted,
@@ -76,9 +76,14 @@ pub fn import_invoice(
             InvoiceReadError::Io(s) => ImportError::ParseError(s),
             InvoiceReadError::Empty => ImportError::ParseError("Planilha vazia".into()),
         })?;
+    let (transactions, raw_warnings, month_from_reader) =
+        (read.transactions, read.warnings, read.reference_month);
 
     let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-    let reference_month = infer_month_from_filename(&filename);
+    // The reader knows best when the file names months its own way (Santander's
+    // Fatura_MMYYYY); the BTG-style YYYY-MM filename inference stays the fallback.
+    let reference_month =
+        month_from_reader.unwrap_or_else(|| infer_month_from_filename(&filename));
     let row_count = transactions.len();
 
     // Apply transaction overrides on top of rule-based categorization

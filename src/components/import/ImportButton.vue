@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// Import button — opens a file picker for .xlsx invoices and emits the chosen paths.
+// Import button — opens a file picker for invoices (BTG .xlsx, Santander .pdf) and
+// emits the chosen paths. The app detects the bank from the file itself.
 import { ref } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -14,7 +15,7 @@ async function handleClick(): Promise<void> {
   try {
     const selected = await open({
       multiple: true,
-      filters: [{ name: "Excel", extensions: ["xlsx", "xls"] }],
+      filters: [{ name: "Fatura (BTG .xlsx · Santander .pdf)", extensions: ["xlsx", "xls", "pdf"] }],
     });
     if (selected) {
       const paths = Array.isArray(selected) ? selected : [selected];

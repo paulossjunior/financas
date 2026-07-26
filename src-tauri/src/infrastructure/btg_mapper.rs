@@ -17,11 +17,10 @@ pub enum MapperError {
     NoTransactionSection,
 }
 
-#[derive(Debug)]
-pub struct ParseWarning {
-    pub row: u32,
-    pub message: String,
-}
+// Historical home of ParseWarning; the type is domain vocabulary (both invoice
+// mappers speak it), so it lives in `domain::transaction` and is re-exported here
+// for the existing call sites.
+pub use crate::domain::transaction::ParseWarning;
 
 pub fn map_sheet_to_transactions(
     sheet: &ParsedSheet,

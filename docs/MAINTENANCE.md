@@ -122,12 +122,24 @@ Crie `domain/<x>.rs` puro, escreva os testes primeiro (`#[cfg(test)]`), registre
 6. Frontend: acrescente a extensão no filtro de `ExtratoPage.vue`; a coluna "Origem" já mostra
    `BankEntry.bank`.
 
-### Adicionar um novo banco de fatura de cartão
-Mesmo padrão: implemente `infrastructure/invoice_reader.rs::InvoiceReader` (`bank`,
-`extensions`, `read` → transações + warnings) e registre em `INVOICE_READERS`.
-`application/import_invoice.rs` é genérico: escolhe o strategy pela extensão e carimba
-`Invoice.bank = reader.bank()`. A tabela `invoices` tem coluna `bank` (default `'BTG'`) —
-nada de literal de banco fora do strategy.
+### Adicionar um novo banco de fatura de cartão (exemplo real: Santander, feature 015)
+Mesmo padrão do extrato: classe pura no domínio + strategy na infraestrutura.
+1. `domain/<banco>_invoice.rs`: classe `Fatura<Banco>` (`parse(&str)` → struct tipada com os
+   totais declarados; `conferir()` estrito quando a fatura imprime um resumo;
+   `into_transactions(invoice_id, categorizer)` com `row_index` sequencial → ids
+   determinísticos). Fixture de texto anonimizado em `tests/fixtures/`.
+2. `infrastructure/<banco>_invoice.rs`: I/O (decifragem se preciso) + `impl InvoiceReader`
+   (`bank`, `extensions`, `read` → `InvoiceRead{transactions, warnings, reference_month}` —
+   devolva `Some(mês)` se o nome do arquivo não seguir o padrão BTG `YYYY-MM-…`).
+3. Registre em `INVOICE_READERS`. `application/import_invoice.rs` é genérico: escolhe o
+   strategy pela extensão e carimba `Invoice.bank = reader.bank()`. A tabela `invoices` tem
+   coluna `bank` (default `'BTG'`) — nada de literal de banco fora do strategy.
+4. Senha: uma credencial **por banco** no keychain (`secrets::save/get/clear/has_password_for`);
+   BTG fica na credencial legada `invoice-password`. O comando `import_invoices` resolve a
+   senha efetiva pelo banco do arquivo e o `remember` grava na chave certa.
+5. Pasta automática: a política do `.pdf` vive em `import_folder::pdf_route` (pura, testada
+   em tabela) — extrato reconhecido → extrato; PDF **cifrado** → candidato a fatura (senha
+   salva importa; sem senha → `ENCRYPTED_NO_PASSWORD`); resto (contracheque) → silêncio.
 
 ### Input de dinheiro
 `inputmode="numeric"` + `@input="campo = maskMoney(campo)"`; no submit `parseMoneyBR(campo)`.
@@ -182,6 +194,7 @@ Setting `import_directory` (`Option<String>` no `AppConfig`; vazio = desligado).
 | 012 | Backup e restauração do banco |
 | 013 | Pasta de importação automática |
 | 014 | Extrato Banestes (.pdf): adapter por banco, entradas/saídas conferidas contra os totais do extrato |
+| 015 | Fatura Santander (.pdf cifrado): 2º InvoiceReader, conferência pelo Resumo da Fatura, senha por banco no keychain |
 
 Cada `specs/NNN-*/` tem spec/plan/research/data-model/contracts/quickstart/tasks.
 

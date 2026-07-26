@@ -1,0 +1,67 @@
+
+
+BANCO SANTANDER (BRASIL) S.A. – CNPJ/MF90.400.888/0001-42
+ MARIA APARECIDA DA SILVA SOUZA - 4111 XXXX XXXX 1111
+
+Olá, Maria! Esta é a fatura do seu cartão ELITE CASHBACK
+VISA SIGNATURE contendo compras e pagamentos
+realizados até 29/12.
+
+Total a Pagar
+R$ 1.000,82
+ Vencimento
+05/01/2027
+
+Detalhamento da Fatura
+
+MARIA A S SOUZA -  4111 XXXX XXXX 1111
+
+Pagamento e Demais Créditos
+
+Compra Data Descrição Parcela R$ US$
+
+  15/12 PAGAMENTO DE FATURA-INTERNET -1.000,00
+
+  28/12 DESCONTO DO MES -50,00
+
+Despesas
+
+Compra Data Descrição Parcela R$ US$
+
+  20/12 MERCADO BOM PRECO 300,00
+
+  28/12 PADARIA DA ESQUINA 100,00
+
+VALOR TOTAL 400,00 0,00
+
+@ MARIA A S SOUZA -  4111 XXXX XXXX 2222
+
+Despesas
+
+Compra Data Descrição Parcela R$ US$
+
+  26/12 OMEGA *AI SUBSCR 546,99 100,00
+
+COTAÇÃO DOLAR R$ 5,4699
+
+IOF DESPESA NO EXTERIOR 19,14
+
+  02/01 TAXI LEGAL 53,01
+
+VALOR TOTAL 619,14 100,00
+
+Resumo da Fatura
+
+Descrição R$ US$
+
+Saldo Anterior 1.031,68
+
+(+) Total Despesas/Débitos no Brasil 472,15
+
+(+) Total Despesas/Débitos no Exterior 546,99 100,00
+
+(-) Total de pagamentos   1.000,00
+
+(-) Total de créditos  50,00
+
+(=) Saldo Desta Fatura 1.000,82

@@ -27,6 +27,7 @@ use crate::domain::bank_statement::BankEntry;
 use crate::domain::{classify_statement, AppConfig, Categorizer};
 use crate::infrastructure::db::{persist, SharedDb};
 use crate::infrastructure::statement_reader::statement_reader_for;
+use crate::infrastructure::{santander_invoice, secrets};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -143,21 +144,19 @@ pub fn import_from_folder(
                     reason: "NOT_RECOGNIZED".to_string(),
                 }),
             },
-            // A PDF here is a bank statement or someone else's document — a payslip,
-            // most often, which this folder is not responsible for. The reader
-            // strategy's `recognizes` sniff decides; only a recognized statement is
-            // imported, never guessed at (a payslip parsed as a statement would
-            // invent movements). A PDF that no strategy recognizes is skipped
-            // **silently**: it is not a problem to report, and listing every payslip
-            // as "ignorado" would read as an error at each app start. Once a PDF *is*
-            // recognized, a failure to import it is reported.
+            // A PDF here is a bank statement, an (encrypted) Santander invoice, or
+            // someone else's document — a payslip, most often. `pdf_route` decides
+            // (see the function for the policy rationale); a PDF routed to silence
+            // is not a problem to report, while a *recognized* document that fails
+            // to import always is.
             Some("pdf") => {
-                let recognized = path
-                    .to_str()
-                    .and_then(statement_reader_for)
-                    .is_some_and(|r| r.recognizes(path.to_str().unwrap_or_default()));
-                if recognized {
-                    match try_import_extrato(&path, db, cfg, &payslip_months) {
+                let Some(path_str) = path.to_str() else { continue };
+                let is_statement = statement_reader_for(path_str)
+                    .is_some_and(|r| r.recognizes(path_str));
+                let is_encrypted = !is_statement && santander_invoice::is_encrypted_pdf(path_str);
+                let santander_pw = secrets::get_password_for("Santander");
+                match pdf_route(is_statement, is_encrypted, santander_pw.is_some()) {
+                    PdfRoute::Extrato => match try_import_extrato(&path, db, cfg, &payslip_months) {
                         Ok(n) => {
                             summary.extratos += 1;
                             summary.entries += n;
@@ -166,7 +165,40 @@ pub fn import_from_folder(
                             name,
                             reason: format!("ERROR: {e}"),
                         }),
+                    },
+                    PdfRoute::Fatura => {
+                        let outcome = (|| {
+                            let mut guard = store.lock().map_err(|e| e.to_string())?;
+                            import_invoice(&path, &mut guard, cfg, santander_pw.as_deref())
+                                .map_err(|e| match e {
+                                    // The *saved* password failing is worth naming —
+                                    // the user fixes it in Settings, not in the folder.
+                                    ImportError::WrongPassword => {
+                                        "a senha salva do Santander não confere".to_string()
+                                    }
+                                    ImportError::Encrypted => "ENCRYPTED_NO_PASSWORD".to_string(),
+                                    other => other.to_string(),
+                                })
+                        })();
+                        match outcome {
+                            Ok(_) => {
+                                summary.faturas += 1;
+                                imported_any_fatura = true;
+                            }
+                            Err(reason) if reason == "ENCRYPTED_NO_PASSWORD" => summary
+                                .ignored
+                                .push(IgnoredFile { name, reason }),
+                            Err(reason) => summary.ignored.push(IgnoredFile {
+                                name,
+                                reason: format!("ERROR: {reason}"),
+                            }),
+                        }
                     }
+                    PdfRoute::FaturaSemSenha => summary.ignored.push(IgnoredFile {
+                        name,
+                        reason: "ENCRYPTED_NO_PASSWORD".to_string(),
+                    }),
+                    PdfRoute::Silencio => {}
                 }
             }
             _ => {} // ignore other files silently
@@ -211,6 +243,38 @@ fn try_import_fatura(
             FaturaOutcome::EncryptedNoPassword
         }
         Err(ImportError::FileNotFound) => FaturaOutcome::Error("arquivo não encontrado".into()),
+    }
+}
+
+/// Where a `.pdf` in the auto-import folder goes. Pure — the whole policy in one
+/// testable place:
+///
+/// - a recognized bank statement imports as extrato (014);
+/// - an **encrypted** PDF is a Santander-invoice candidate — it is the only
+///   encrypted document in this app's universe (payslips and statements are open) —
+///   imported with the saved password, or reported once as `ENCRYPTED_NO_PASSWORD`
+///   so the user knows to save the password in Settings;
+/// - any other PDF (a payslip) is skipped silently: this folder legitimately holds
+///   them, and reporting each one at every app start would read as an error.
+#[derive(Debug, PartialEq)]
+enum PdfRoute {
+    Extrato,
+    Fatura,
+    FaturaSemSenha,
+    Silencio,
+}
+
+fn pdf_route(is_statement: bool, is_encrypted: bool, has_invoice_password: bool) -> PdfRoute {
+    if is_statement {
+        PdfRoute::Extrato
+    } else if is_encrypted {
+        if has_invoice_password {
+            PdfRoute::Fatura
+        } else {
+            PdfRoute::FaturaSemSenha
+        }
+    } else {
+        PdfRoute::Silencio
     }
 }
 
@@ -385,6 +449,107 @@ mod tests {
         assert_eq!(summary.faturas, 1, "the valid invoice must still import");
         assert!(summary.ignored.iter().any(|f| f.name == "junk.xlsx"));
         assert!(summary.ignored.iter().any(|f| f.name == "garbage.xls"));
+    }
+
+    // T030 — the whole `.pdf` routing policy, in one table (research R8).
+    #[test]
+    fn pdf_route_policy_table() {
+        use PdfRoute::*;
+        // (is_statement, is_encrypted, has_password) → route
+        assert_eq!(pdf_route(true, false, false), Extrato, "extrato reconhecido");
+        assert_eq!(pdf_route(true, true, true), Extrato, "extrato vence qualquer outra rota");
+        assert_eq!(pdf_route(false, true, true), Fatura, "cifrado + senha salva importa");
+        assert_eq!(pdf_route(false, true, false), FaturaSemSenha, "cifrado sem senha é reportado");
+        assert_eq!(pdf_route(false, false, true), Silencio, "PDF aberto que não é extrato = contracheque");
+        assert_eq!(pdf_route(false, false, false), Silencio);
+    }
+
+    /// Test seam for the Santander-invoice folder branch: import from already-
+    /// extracted text (no personal-data PDF in the repository). Mirrors what
+    /// `import_invoice` does after `extract_text`; production goes through the
+    /// reader strategy — both funnel into the same store/dedup path.
+    fn import_fatura_santander_text(
+        text: &str,
+        filename: &str,
+        store: &SharedStore,
+        cfg: &AppConfig,
+    ) -> Result<usize, String> {
+        use crate::domain::santander_invoice::FaturaSantander;
+        use crate::domain::{Categorizer, Invoice};
+        use chrono::DateTime;
+        use uuid::Uuid;
+
+        let fatura = FaturaSantander::parse(text)?;
+        fatura.conferir().exigir()?;
+        let invoice_id = Uuid::new_v5(&Uuid::NAMESPACE_URL, filename.as_bytes());
+        let rules = cfg.category_rules.clone();
+        let cz = if rules.is_empty() { Categorizer::with_defaults() } else { Categorizer::new(rules) };
+        let month = fatura.reference_month(filename);
+        let (txs, _) = fatura.into_transactions(invoice_id, &cz);
+        let n = txs.len();
+        let mut invoice = Invoice::new(
+            filename.to_string(),
+            month,
+            None,
+            txs,
+            DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
+        );
+        invoice.bank = "Santander".to_string();
+        store.lock().map_err(|e| e.to_string())?.add(invoice);
+        Ok(n)
+    }
+
+    // T030 — a Santander invoice (as text) lands in the store with its bank and month.
+    #[test]
+    fn imports_santander_invoice_text_from_folder() {
+        let store = new_shared_store();
+        let n = import_fatura_santander_text(
+            &extrato_text("santander_fatura.txt"),
+            "Fatura_072026_MARIA_1111_VISA_000_SANTANDER.PDF",
+            &store,
+            &AppConfig::default(),
+        )
+        .unwrap();
+        assert_eq!(n, 15, "14 despesas + 1 cashback");
+        let guard = store.lock().unwrap();
+        let list = guard.list();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].bank, "Santander");
+        assert_eq!(list[0].reference_month.to_string_iso(), "2026-07");
+    }
+
+    // T030 — a tampered invoice must not touch the store.
+    #[test]
+    fn santander_invoice_that_does_not_reconcile_is_not_stored() {
+        let store = new_shared_store();
+        let err = import_fatura_santander_text(
+            &extrato_text("santander_fatura_quebrada.txt"),
+            "Fatura_072026_MARIA_1111_VISA_000_SANTANDER.PDF",
+            &store,
+            &AppConfig::default(),
+        )
+        .unwrap_err();
+        assert!(err.contains("não fechou"), "{err}");
+        assert_eq!(store.lock().unwrap().list().len(), 0, "nada gravado");
+    }
+
+    // T031 — re-scanning the same invoice replaces it (same filename identity).
+    #[test]
+    fn rescanning_a_santander_invoice_does_not_duplicate() {
+        let store = new_shared_store();
+        let cfg = AppConfig::default();
+        for _ in 0..2 {
+            import_fatura_santander_text(
+                &extrato_text("santander_fatura.txt"),
+                "Fatura_072026_MARIA_1111_VISA_000_SANTANDER.PDF",
+                &store,
+                &cfg,
+            )
+            .unwrap();
+        }
+        let guard = store.lock().unwrap();
+        assert_eq!(guard.list().len(), 1, "substitui, não duplica");
+        assert_eq!(guard.list()[0].transactions.len(), 15);
     }
 
     // A PDF that is not a statement (a payslip, or any unreadable one) must leave no
