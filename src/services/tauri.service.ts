@@ -47,6 +47,15 @@ function mapError(raw: string): string {
     const cols = raw.replace("INVALID_FORMAT:", "");
     return `Formato inválido: colunas ausentes — ${cols}`;
   }
+  // Statement/PDF readers already answer in plain pt-BR and say what to do about it
+  // ("Este PDF não é um extrato do Banestes.", "…não fechou com os saldos…"). Pass
+  // those through — and ONLY those: requiring an accented Portuguese letter keeps raw
+  // technical errors in English ("database is locked", "no such table") behind the
+  // calm generic message below, as before.
+  const sentence = raw.replace(/^Error:\s*/, "").trim();
+  if (sentence.includes(" ") && /[áàâãéêíóôõúüç]/i.test(sentence)) {
+    return sentence;
+  }
   // Keep the technical detail in the console for debugging, but show the user a calm,
   // actionable message instead of a raw error string.
   console.error("[financas] erro inesperado:", raw);
@@ -126,7 +135,7 @@ export async function fetchIpca(): Promise<InflationData> {
   }
 }
 
-/** Bank statement (.xls) — preview what will be imported vs excluded (no save). */
+/** Bank statement (Banestes .pdf / BTG .xls) — preview imported vs excluded (no save). */
 export async function previewBankStatement(path: string): Promise<StatementPreview> {
   try {
     return await invoke<StatementPreview>("preview_bank_statement", { path });
@@ -145,9 +154,9 @@ export async function importBankStatement(path: string): Promise<number> {
 }
 
 /** Save the (edited) included entries from a preview. Returns how many were saved. */
-export async function saveBankStatement(account: string, entries: ClassifiedEntry[]): Promise<number> {
+export async function saveBankStatement(bank: string, account: string, entries: ClassifiedEntry[]): Promise<number> {
   try {
-    return await invoke<number>("save_bank_statement", { account, entries });
+    return await invoke<number>("save_bank_statement", { bank, account, entries });
   } catch (e) {
     throw new Error(mapError(String(e)));
   }

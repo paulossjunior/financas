@@ -67,6 +67,7 @@ impl Database {
                 "
                 CREATE TABLE IF NOT EXISTS invoices (
                     id             TEXT PRIMARY KEY,
+                    bank           TEXT NOT NULL DEFAULT 'BTG',
                     filename       TEXT NOT NULL,
                     reference_year INTEGER NOT NULL,
                     reference_month INTEGER NOT NULL,
@@ -192,6 +193,17 @@ impl Database {
         if let Err(e) = self
             .conn
             .execute("ALTER TABLE bank_entries ADD COLUMN user_categorized INTEGER NOT NULL DEFAULT 0", [])
+        {
+            let msg = e.to_string();
+            if !msg.contains("duplicate column") {
+                return Err(msg);
+            }
+        }
+        // Migrate invoices created before multi-bank support (feature 014): the table
+        // is bank-generic; every pre-existing invoice was a BTG one.
+        if let Err(e) = self
+            .conn
+            .execute("ALTER TABLE invoices ADD COLUMN bank TEXT NOT NULL DEFAULT 'BTG'", [])
         {
             let msg = e.to_string();
             if !msg.contains("duplicate column") {
@@ -418,10 +430,11 @@ impl Database {
 
         for inv in invoices {
             tx.execute(
-                "INSERT INTO invoices (id, filename, reference_year, reference_month, due_date, imported_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO invoices (id, bank, filename, reference_year, reference_month, due_date, imported_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![
                     inv.id.to_string(),
+                    inv.bank,
                     inv.filename,
                     inv.reference_month.year,
                     inv.reference_month.month as i64,
@@ -460,28 +473,30 @@ impl Database {
     pub fn load_invoices(&self) -> Result<Vec<Invoice>, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, filename, reference_year, reference_month, due_date, imported_at FROM invoices")
+            .prepare("SELECT id, bank, filename, reference_year, reference_month, due_date, imported_at FROM invoices")
             .map_err(|e| e.to_string())?;
 
         let rows = stmt
             .query_map([], |row| {
                 let id: String = row.get(0)?;
-                let filename: String = row.get(1)?;
-                let year: i32 = row.get(2)?;
-                let month: i64 = row.get(3)?;
-                let due: Option<String> = row.get(4)?;
-                let imported: String = row.get(5)?;
-                Ok((id, filename, year, month, due, imported))
+                let bank: String = row.get(1)?;
+                let filename: String = row.get(2)?;
+                let year: i32 = row.get(3)?;
+                let month: i64 = row.get(4)?;
+                let due: Option<String> = row.get(5)?;
+                let imported: String = row.get(6)?;
+                Ok((id, bank, filename, year, month, due, imported))
             })
             .map_err(|e| e.to_string())?;
 
         let mut invoices = Vec::new();
         for r in rows {
-            let (id, filename, year, month, due, imported) = r.map_err(|e| e.to_string())?;
+            let (id, bank, filename, year, month, due, imported) = r.map_err(|e| e.to_string())?;
             let invoice_id = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
             let transactions = self.load_transactions(&id)?;
             invoices.push(Invoice {
                 id: invoice_id,
+                bank,
                 filename,
                 reference_month: YearMonth::new(year, month as u8),
                 due_date: due.and_then(|s| NaiveDate::parse_from_str(&s, DATE_FMT).ok()),
@@ -1042,6 +1057,18 @@ mod tests {
         )
     }
 
+    /// The invoices table is bank-generic: whatever bank the reader strategy stamps
+    /// must survive the roundtrip untouched (no BTG hardcoded in persistence).
+    #[test]
+    fn invoice_bank_roundtrips_for_any_bank() {
+        let mut db = Database::open_in_memory().unwrap();
+        let mut inv = make_invoice();
+        assert_eq!(inv.bank, "BTG", "default histórico");
+        inv.bank = "NovoBanco".to_string();
+        db.save_all(std::slice::from_ref(&inv)).unwrap();
+        assert_eq!(db.load_invoices().unwrap()[0].bank, "NovoBanco");
+    }
+
     #[test]
     fn save_and_load_roundtrip() {
         let mut db = Database::open_in_memory().unwrap();
@@ -1051,6 +1078,7 @@ mod tests {
         let loaded = db.load_invoices().unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].id, inv.id);
+        assert_eq!(loaded[0].bank, "BTG");
         assert_eq!(loaded[0].filename, inv.filename);
         assert_eq!(loaded[0].transactions.len(), 1);
         let t = &loaded[0].transactions[0];

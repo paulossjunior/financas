@@ -32,9 +32,20 @@ impl YearMonth {
 
 use chrono::Datelike;
 
+/// Every invoice imported before multi-bank support was a BTG one; the default keeps
+/// old persisted rows (and existing tests) valid without a data migration.
+fn default_bank() -> String {
+    "BTG".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Invoice {
     pub id: Uuid,
+    /// Which bank issued this invoice ("BTG", …). Generic on purpose: the store and
+    /// the database accept invoices from any bank; the value is stamped at import
+    /// time by the reader strategy (`InvoiceReader::bank`), never hardcoded per site.
+    #[serde(default = "default_bank")]
+    pub bank: String,
     pub filename: String,
     pub reference_month: YearMonth,
     pub due_date: Option<NaiveDate>,
@@ -53,6 +64,7 @@ impl Invoice {
         let id = Uuid::new_v5(&Uuid::NAMESPACE_URL, filename.as_bytes());
         Self {
             id,
+            bank: default_bank(),
             filename,
             reference_month,
             due_date,

@@ -1,5 +1,7 @@
-//! Application use-case: import a BTG `.xlsx` invoice — parse the sheet, map rows to
-//! transactions, categorize them, and add the resulting [`Invoice`] to the store.
+//! Application use-case: import a card invoice — pick the bank's reader strategy,
+//! map rows to transactions, categorize them, and add the resulting [`Invoice`]
+//! (stamped with the bank) to the store. Bank-agnostic: everything specific to a
+//! bank's file lives behind `infrastructure::invoice_reader::InvoiceReader`.
 
 use std::path::Path;
 use chrono::Local;
@@ -7,10 +9,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::{categorizer::Categorizer, invoice::{Invoice, YearMonth}, AppConfig};
-use crate::infrastructure::{
-    btg_mapper::map_sheet_to_transactions,
-    xlsx_parser::{parse_xlsx, ParseError},
-};
+use crate::infrastructure::invoice_reader::{invoice_reader_for, InvoiceReadError};
 use super::store::InvoiceStore;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -53,13 +52,9 @@ pub fn import_invoice(
         return Err(ImportError::FileNotFound);
     }
 
-    let sheet = parse_xlsx(path, password).map_err(|e| match e {
-        ParseError::Encrypted => ImportError::Encrypted,
-        ParseError::WrongPassword => ImportError::WrongPassword,
-        ParseError::InvalidFormat(s) => ImportError::InvalidFormat(s),
-        ParseError::IoError(s) => ImportError::ParseError(s),
-        ParseError::EmptySheet => ImportError::ParseError("Planilha vazia".into()),
-    })?;
+    // Strategy dispatch: which bank's invoice is this file?
+    let reader = invoice_reader_for(path)
+        .ok_or_else(|| ImportError::InvalidFormat("extensão sem leitor de fatura".into()))?;
 
     // Deterministic invoice_id from filename so transaction IDs are stable across sessions
     let filename_str = path.file_name().unwrap_or_default().to_string_lossy();
@@ -72,9 +67,15 @@ pub fn import_invoice(
         Categorizer::new(cat_rules)
     };
 
-    let (transactions, raw_warnings) =
-        map_sheet_to_transactions(&sheet, invoice_id, &categorizer)
-            .map_err(|e| ImportError::InvalidFormat(e.to_string()))?;
+    let (transactions, raw_warnings) = reader
+        .read(path, password, invoice_id, &categorizer)
+        .map_err(|e| match e {
+            InvoiceReadError::Encrypted => ImportError::Encrypted,
+            InvoiceReadError::WrongPassword => ImportError::WrongPassword,
+            InvoiceReadError::InvalidFormat(s) => ImportError::InvalidFormat(s),
+            InvoiceReadError::Io(s) => ImportError::ParseError(s),
+            InvoiceReadError::Empty => ImportError::ParseError("Planilha vazia".into()),
+        })?;
 
     let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
     let reference_month = infer_month_from_filename(&filename);
@@ -88,13 +89,15 @@ pub fn import_invoice(
         }
     }
 
-    let invoice = Invoice::new(
+    let mut invoice = Invoice::new(
         filename.clone(),
         reference_month.clone(),
         None,
         transactions,
         Local::now().naive_local(),
     );
+    // The record is bank-generic; the strategy that read the file says whose it is.
+    invoice.bank = reader.bank().to_string();
 
     let is_replace = store.add(invoice);
     let invoice_id_str = {

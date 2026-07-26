@@ -5,6 +5,7 @@
 use calamine::{open_workbook_auto, Data, Reader};
 
 use crate::domain::bank_statement::{parse_statement_rows, ParsedStatement};
+use crate::infrastructure::statement_reader::StatementReader;
 
 fn cell_to_string(c: &Data) -> String {
     match c {
@@ -42,9 +43,35 @@ pub fn read_statement(path: &str) -> Result<ParsedStatement, String> {
         .rows()
         .map(|r| r.iter().map(cell_to_string).collect())
         .collect();
-    let parsed = parse_statement_rows(&rows);
+    let mut parsed = parse_statement_rows(&rows);
+    parsed.bank = "BTG".to_string();
     if parsed.entries.is_empty() {
         return Err("Não encontrei lançamentos no extrato (formato não reconhecido).".into());
     }
     Ok(parsed)
+}
+
+/// Strategy: the BTG statement is an `.xls`/`.xlsx` spreadsheet.
+pub struct BtgStatementReader;
+
+impl StatementReader for BtgStatementReader {
+    fn bank(&self) -> &'static str {
+        "BTG"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["xls", "xlsx"]
+    }
+
+    /// Extension is sniff enough here: a spreadsheet in the import folder was put
+    /// there to be imported (invoice or statement — the folder scan tries the
+    /// invoice reader first for `.xlsx`), and one that parses as neither is
+    /// *reported*, not silently skipped. See `application/import_folder.rs`.
+    fn recognizes(&self, _path: &str) -> bool {
+        true
+    }
+
+    fn read(&self, path: &str) -> Result<ParsedStatement, String> {
+        read_statement(path)
+    }
 }

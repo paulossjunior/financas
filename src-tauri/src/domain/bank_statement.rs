@@ -83,15 +83,21 @@ impl BankEntry {
 }
 
 /// Result of parsing a statement file.
+///
+/// `bank` identifies which reader produced it ("BTG", "Banestes"), so the bank
+/// travels with the data instead of being guessed again at each call site.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ParsedStatement {
+    #[serde(default)]
+    pub bank: String,
     pub holder: String,
     pub account: String,
     pub entries: Vec<RawEntry>,
 }
 
 /// Uppercase, strip accents, collapse whitespace — for robust name/keyword matching.
-fn norm(s: &str) -> String {
+/// Shared with the per-bank readers so every statement normalizes identically.
+pub(crate) fn norm(s: &str) -> String {
     let folded: String = s
         .chars()
         .map(|c| match c {
@@ -107,7 +113,8 @@ fn norm(s: &str) -> String {
     folded.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn parse_amount(s: &str) -> Option<Decimal> {
+/// Parse a money cell: plain decimal, or Brazilian format ("1.234,56").
+pub(crate) fn parse_amount(s: &str) -> Option<Decimal> {
     let t = s.trim();
     if t.is_empty() {
         return None;
@@ -193,10 +200,36 @@ pub fn parse_statement_rows(rows: &[Vec<String>]) -> ParsedStatement {
     out
 }
 
+/// Identity key of a statement line. **Do not change**: every bank entry already
+/// persisted was hashed from this exact string, so any edit re-imports as new rows.
+fn entry_key(account: &str, e: &RawEntry) -> String {
+    format!("bank:{}:{}:{}:{}", account, e.date, norm(&e.description), e.amount)
+}
+
 /// Deterministic id so re-importing the same line does not duplicate it.
 pub fn entry_id(account: &str, e: &RawEntry) -> String {
-    let key = format!("bank:{}:{}:{}:{}", account, e.date, norm(&e.description), e.amount);
-    Uuid::new_v5(&Uuid::NAMESPACE_OID, key.as_bytes()).to_string()
+    Uuid::new_v5(&Uuid::NAMESPACE_OID, entry_key(account, e).as_bytes()).to_string()
+}
+
+/// Ids for a whole statement, in order.
+///
+/// Two genuinely different lines can share date + description + amount (two equal
+/// pix to the same payee on the same day). Hashing only that key would collapse
+/// them into one row — money silently undercounted. Repeats therefore get an
+/// occurrence suffix, while the **first** occurrence keeps the legacy key so no
+/// already-imported entry changes id.
+pub fn entry_ids(account: &str, entries: &[RawEntry]) -> Vec<String> {
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    entries
+        .iter()
+        .map(|e| {
+            let base = entry_key(account, e);
+            let n = seen.entry(base.clone()).or_insert(0);
+            let key = if *n == 0 { base } else { format!("{base}#{n}") };
+            *n += 1;
+            Uuid::new_v5(&Uuid::NAMESPACE_OID, key.as_bytes()).to_string()
+        })
+        .collect()
 }
 
 /// Classify one entry: kind, category, and whether it is excluded (and why).
@@ -212,7 +245,10 @@ pub fn classify_entry(
     let ndesc = norm(&e.description);
     let ncat = norm(&e.btg_category);
 
-    let is_card = ntrans.contains("FATURA DO CART") || ndesc.contains("FATURA DO CART");
+    // Card-bill payment. Wording differs per bank ("Pagamento de fatura do cartão"
+    // at BTG, "Pagamento Fatura Cartao" at Banestes), so match the two tokens.
+    let has_card_bill = |s: &str| s.contains("FATURA") && s.contains("CART");
+    let is_card = has_card_bill(&ntrans) || has_card_bill(&ndesc);
     let is_salary = (ncat == "SALARIO" || ntrans.contains("SALARIO")) && has_payslip_month;
     // Internal transfer = the description carries the account holder's name. The holder
     // metadata may come with a broken byte (U+FFFD), so match by tokens: every "clean"
@@ -268,10 +304,17 @@ pub fn classify_statement(
     payslip_months: &HashSet<String>,
 ) -> Vec<ClassifiedEntry> {
     let hk = holder_key(&parsed.holder);
+    let ids = entry_ids(&parsed.account, &parsed.entries);
     parsed
         .entries
         .iter()
-        .map(|e| classify_entry(e, &parsed.account, &hk, payslip_months.contains(&e.month), categorizer))
+        .zip(ids)
+        .map(|(e, id)| {
+            let mut c =
+                classify_entry(e, &parsed.account, &hk, payslip_months.contains(&e.month), categorizer);
+            c.id = id;
+            c
+        })
         .collect()
 }
 
@@ -339,5 +382,54 @@ mod tests {
         let b = entry_id(&p.account, &p.entries[1]);
         assert_eq!(a, b);
         assert_ne!(a, entry_id(&p.account, &p.entries[2]));
+    }
+
+    /// Regression lock: the id key must stay byte-identical, or every bank entry
+    /// already in the user's database re-imports as a new row.
+    #[test]
+    fn entry_id_key_format_is_frozen() {
+        let p = parse_statement_rows(&rows());
+        let e = &p.entries[1]; // Ln Sports, -340, 01/01/2026
+        let legacy = Uuid::new_v5(
+            &Uuid::NAMESPACE_OID,
+            b"bank:286969-2:2026-01-01:LN SPORTS:-340",
+        )
+        .to_string();
+        assert_eq!(entry_id(&p.account, e), legacy);
+        // …and the first occurrence in a batch keeps that same id.
+        assert_eq!(entry_ids(&p.account, &p.entries)[1], legacy);
+    }
+
+    #[test]
+    fn identical_lines_get_distinct_ids() {
+        let e = RawEntry {
+            date: "2026-03-04".into(),
+            month: "2026-03".into(),
+            btg_category: String::new(),
+            transaction: "Pix enviado".into(),
+            description: "Padaria Central".into(),
+            amount: Decimal::from_str("-25.50").unwrap(),
+        };
+        let ids = entry_ids("286969-2", &[e.clone(), e.clone(), e.clone()]);
+        assert_eq!(ids[0], entry_id("286969-2", &e), "first keeps the legacy id");
+        assert_ne!(ids[0], ids[1]);
+        assert_ne!(ids[1], ids[2]);
+    }
+
+    #[test]
+    fn card_bill_is_excluded_in_both_bank_wordings() {
+        let cz = Categorizer::with_defaults();
+        let mk = |transaction: &str| RawEntry {
+            date: "2026-03-04".into(),
+            month: "2026-03".into(),
+            btg_category: String::new(),
+            transaction: transaction.into(),
+            description: "Cartao".into(),
+            amount: Decimal::from_str("-100").unwrap(),
+        };
+        for t in ["Pagamento de fatura do cartão", "Pagamento Fatura Cartao"] {
+            let c = classify_entry(&mk(t), "1234567-8", "", false, &cz);
+            assert!(!c.included && c.reason == "fatura", "não excluiu: {t}");
+        }
     }
 }

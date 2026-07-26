@@ -20,6 +20,7 @@ const mockGetDashboard = vi.mocked(tauriService.getDashboard);
 function makeInvoice(overrides: Partial<InvoiceInfo> = {}): InvoiceInfo {
   return {
     id: "inv-1",
+    bank: "BTG",
     filename: "2026-05-fatura.xlsx",
     month: "2026-05",
     row_count: 10,

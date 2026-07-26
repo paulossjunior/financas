@@ -44,7 +44,12 @@ function msg(e: unknown) { return e instanceof Error ? e.message : String(e); }
 
 async function pick() {
   error.value = null; flash.value = null;
-  const sel = await open({ multiple: false, filters: [{ name: "Extrato", extensions: ["xls", "xlsx"] }] });
+  // One picker for every supported bank — the app detects which bank it is from the
+  // file itself, so the user never has to say.
+  const sel = await open({
+    multiple: false,
+    filters: [{ name: "Extrato (Banestes .pdf · BTG .xls)", extensions: ["pdf", "xls", "xlsx"] }],
+  });
   if (!sel || Array.isArray(sel)) return;
   loading.value = true;
   try {
@@ -58,7 +63,7 @@ async function confirmImport() {
   if (!preview.value) return;
   loading.value = true; error.value = null;
   try {
-    const n = await saveBankStatement(preview.value.account, preview.value.included);
+    const n = await saveBankStatement(preview.value.bank, preview.value.account, preview.value.included);
     flash.value = `${n} lançamento${n === 1 ? "" : "s"} importado${n === 1 ? "" : "s"}.`;
     preview.value = null; pendingPath.value = null;
     await load();
@@ -89,9 +94,9 @@ onMounted(async () => { await settings.loadConfig(); await load(); });
       <div>
         <p class="eyebrow">Extrato · contas bancárias</p>
         <h1>Importar extrato</h1>
-        <p class="sub">Lê o extrato do banco (.xls), categoriza os lançamentos e soma no painel. Ignora o que já é contado (fatura do cartão, salário com contracheque, transferências entre suas contas).</p>
+        <p class="sub">Lê o extrato do <b>Banestes</b> (.pdf) ou do <b>BTG</b> (.xls/.xlsx) — o app reconhece o banco pelo arquivo —, categoriza as entradas e saídas e soma no painel. Ignora o que já é contado (fatura do cartão, salário com contracheque, transferências entre suas contas).</p>
       </div>
-      <button class="btn primary" :disabled="loading" @click="pick">{{ loading ? "Lendo…" : "↑ Importar .xls" }}</button>
+      <button class="btn primary" :disabled="loading" @click="pick">{{ loading ? "Lendo…" : "↑ Importar extrato" }}</button>
     </header>
 
     <p v-if="error" class="state err">⚠ {{ error }}</p>
@@ -101,7 +106,7 @@ onMounted(async () => { await settings.loadConfig(); await load(); });
     <section v-if="preview" class="card">
       <div class="rev-head">
         <div>
-          <h2>Prévia</h2>
+          <h2>Prévia <span class="bdg bank">{{ preview.bank }}</span></h2>
           <p class="sub2">Titular <b>{{ preview.holder }}</b> · conta <b>{{ preview.account }}</b></p>
         </div>
         <div class="rev-actions">
@@ -154,20 +159,21 @@ onMounted(async () => { await settings.loadConfig(); await load(); });
       </div>
       <div class="tblwrap" v-if="entries.length">
         <table>
-          <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th class="r">Valor</th><th></th></tr></thead>
+          <thead><tr><th>Data</th><th>Origem</th><th>Descrição</th><th>Categoria</th><th class="r">Valor</th><th></th></tr></thead>
           <tbody>
             <tr v-for="e in entries" :key="e.id">
               <td class="dt">{{ day(e.date) }}</td>
+              <td><span class="bdg bank" :title="`Conta ${e.account}`">{{ e.bank }}</span></td>
               <td class="ds">{{ e.description }}</td>
               <td><select class="catsel" :value="e.category" @change="setCat(e, ($event.target as HTMLSelectElement).value)"><option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option></select></td>
               <td class="r" :class="e.kind === 'income' ? 'pos' : 'neg'">{{ brl(e.amount) }}</td>
               <td class="r"><button class="x" title="Remover" @click="remove(e.id)">✕</button></td>
             </tr>
-            <tr class="tot"><td colspan="3">Total</td><td class="r" :class="total >= 0 ? 'pos' : 'neg'">{{ brl(total) }}</td><td></td></tr>
+            <tr class="tot"><td colspan="4">Total</td><td class="r" :class="total >= 0 ? 'pos' : 'neg'">{{ brl(total) }}</td><td></td></tr>
           </tbody>
         </table>
       </div>
-      <p v-else class="mut">Nenhum extrato importado ainda. Clique em <b>Importar .xls</b>.</p>
+      <p v-else class="mut">Nenhum extrato importado ainda. Clique em <b>Importar extrato</b> e escolha o PDF do Banestes ou a planilha do BTG.</p>
     </section>
   </div>
 </template>
@@ -208,6 +214,7 @@ th.r, td.r { text-align: right; } tr:last-child td { border-bottom: none; }
 .bdg.fatura { background: #e9e3ff; color: #6d4aff; }
 .bdg.salario { background: var(--clr-amber-soft, #f7e6cf); color: var(--clr-amber); }
 .bdg.interno { background: var(--clr-surface-alt, #eef1f0); color: var(--clr-text-secondary); }
+.bdg.bank { background: var(--clr-surface-alt, #eef1f0); color: var(--clr-text-secondary); border: 1px solid var(--clr-stroke); text-transform: none; letter-spacing: .02em; }
 .x { font-family: inherit; font-size: 12px; border: 1px solid var(--clr-stroke); background: var(--clr-surface); color: var(--clr-text-secondary); border-radius: 6px; padding: 3px 8px; cursor: pointer; }
 .x:hover { border-color: var(--clr-negative); color: var(--clr-negative); }
 </style>

@@ -9,15 +9,26 @@ use tauri::State;
 
 use crate::domain::bank_statement::{classify_statement, BankEntry, ClassifiedEntry, ParsedStatement};
 use crate::domain::{AppConfig, Categorizer};
-use crate::infrastructure::btg_statement::read_statement;
+use crate::infrastructure::statement_reader::{statement_reader_for, supported_formats};
 use crate::infrastructure::db::SharedDb;
 
 #[derive(Debug, Serialize)]
 pub struct StatementPreview {
+    /// Which bank the file came from — detected from the file, not asked of the user.
+    pub bank: String,
     pub holder: String,
     pub account: String,
     pub included: Vec<ClassifiedEntry>,
     pub excluded: Vec<ClassifiedEntry>,
+}
+
+/// Strategy dispatch: the registry picks the reader for the file (Banestes ships
+/// PDF, BTG a spreadsheet); each strategy fills `ParsedStatement.bank` itself.
+fn read_statement(path: &str) -> Result<ParsedStatement, String> {
+    match statement_reader_for(path) {
+        Some(reader) => reader.read(path),
+        None => Err(format!("Formato não suportado. Use {}.", supported_formats())),
+    }
 }
 
 /// Read + classify a statement file (no persistence).
@@ -50,7 +61,13 @@ pub async fn preview_bank_statement(
 ) -> Result<StatementPreview, String> {
     let (parsed, classified) = classify_all(&path, &config, &db)?;
     let (included, excluded): (Vec<_>, Vec<_>) = classified.into_iter().partition(|c| c.included);
-    Ok(StatementPreview { holder: parsed.holder, account: parsed.account, included, excluded })
+    Ok(StatementPreview {
+        bank: parsed.bank,
+        holder: parsed.holder,
+        account: parsed.account,
+        included,
+        excluded,
+    })
 }
 
 /// Import: classify + persist the included entries (dedup). Returns how many were saved.
@@ -64,7 +81,7 @@ pub async fn import_bank_statement(
     let entries: Vec<BankEntry> = classified
         .iter()
         .filter(|c| c.included)
-        .map(|c| BankEntry::from_classified(c, "BTG", &parsed.account))
+        .map(|c| BankEntry::from_classified(c, &parsed.bank, &parsed.account))
         .collect();
     let n = entries.len();
     db.lock().map_err(|e| e.to_string())?.save_bank_entries(&entries)?;
@@ -74,6 +91,7 @@ pub async fn import_bank_statement(
 /// Save the (possibly re-categorized) included entries from a preview. Dedup by id.
 #[tauri::command]
 pub async fn save_bank_statement(
+    bank: String,
     account: String,
     entries: Vec<ClassifiedEntry>,
     db: State<'_, SharedDb>,
@@ -81,7 +99,7 @@ pub async fn save_bank_statement(
     let items: Vec<BankEntry> = entries
         .iter()
         .filter(|c| c.included)
-        .map(|c| BankEntry::from_classified(c, "BTG", &account))
+        .map(|c| BankEntry::from_classified(c, &bank, &account))
         .collect();
     let n = items.len();
     db.lock().map_err(|e| e.to_string())?.save_bank_entries(&items)?;
