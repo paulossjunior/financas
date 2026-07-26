@@ -10,7 +10,8 @@ import CardForecastChart from "@/components/dashboard/CardForecastChart.vue";
 import InflationExplainer from "@/components/dashboard/InflationExplainer.vue";
 import InflationContributions from "@/components/dashboard/InflationContributions.vue";
 import type { Category, InflationData, ManualEntry, ParseWarning, Payslip } from "@/types/api.types";
-import { listPayslips, getInflation, fetchIpca } from "@/services/tauri.service";
+import type { AccountPosition } from "@/types/api.types";
+import { listPayslips, getInflation, fetchIpca, listAccountPositions } from "@/services/tauri.service";
 import { maskMoney, parseMoneyBR } from "@/utils/money";
 
 const store = useInvoiceStore();
@@ -334,6 +335,14 @@ const potentialMin = computed(() => suggestions.value.reduce((a, s) => a + (s.mi
 const potentialMax = computed(() => suggestions.value.reduce((a, s) => a + (s.max ?? 0), 0));
 const hasPotential = computed(() => potentialMax.value > 0);
 
+// Account balances (stock) read from the imported statements — feature 016. This is
+// what the user has *now*, as opposed to the month's flow shown in the KPIs.
+const positions = ref<AccountPosition[]>([]);
+const positionsTotal = computed(() =>
+  positions.value.reduce((sum, p) => sum + (parseFloat(p.balance) || 0), 0)
+);
+const PRODUCT_LABEL: Record<string, string> = { corrente: "conta corrente", poupanca: "poupança" };
+
 onMounted(async () => {
   await store.refreshInvoices();
   await settingsStore.loadConfig();
@@ -341,6 +350,7 @@ onMounted(async () => {
   try { payslips.value = await listPayslips(); } catch { /* ignore */ }
   try { await store.loadAllTransactions(); } catch { /* ignore */ }
   if (store.hasData) await store.loadDashboard();
+  positions.value = await listAccountPositions();
   await loadInflation();
 });
 
@@ -420,34 +430,8 @@ async function removeAvulso(id: string): Promise<void> {
   }
 }
 
-// password prompt for encrypted BTG files
-const pwPrompt = ref(false);
-const pwPaths = ref<string[]>([]);
-const pwValue = ref("");
-const pwError = ref<string | null>(null);
-const pwRemember = ref(true);
-
-async function submitPassword(): Promise<void> {
-  pwError.value = null;
-  try {
-    const results = await store.importInvoices(pwPaths.value, pwValue.value, pwRemember.value);
-    lastWarnings.value = results.flatMap((r) => r.warnings);
-    await store.loadDashboard();
-    pwPrompt.value = false;
-    pwValue.value = "";
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (msg === "WRONG_PASSWORD") pwError.value = "Senha incorreta. Tente novamente.";
-    else if (msg === "ENCRYPTED_FILE") pwError.value = "Informe a senha do arquivo.";
-    else pwError.value = msg;
-  }
-}
-
-function cancelPassword(): void {
-  pwPrompt.value = false;
-  pwValue.value = "";
-  pwError.value = null;
-}
+// (The encrypted-invoice password prompt lives on the Faturas page — the import
+// button moved there; see components/import/PasswordModal.vue.)
 
 function fmt(val: number | string): string {
   const n = typeof val === "string" ? parseFloat(val) || 0 : val;
@@ -562,33 +546,6 @@ function refLabel(): string {
 
     <ImportWarnings :warnings="lastWarnings" />
 
-    <!-- Password prompt for encrypted BTG files -->
-    <div v-if="pwPrompt" class="pw-overlay" @click.self="cancelPassword">
-      <div class="pw-modal">
-        <h3>Fatura protegida por senha</h3>
-        <p class="pw-sub">Este arquivo BTG está criptografado. Informe a senha para importar.</p>
-        <input
-          v-model="pwValue"
-          type="password"
-          class="pw-input"
-          placeholder="Senha do arquivo"
-          autofocus
-          @keyup.enter="submitPassword"
-        />
-        <label class="pw-remember">
-          <input type="checkbox" v-model="pwRemember" />
-          <span>Lembrar senha neste dispositivo</span>
-        </label>
-        <div v-if="pwError" class="pw-err">⚠ {{ pwError }}</div>
-        <div class="pw-actions">
-          <button class="pw-btn ghost" @click="cancelPassword">Cancelar</button>
-          <button class="pw-btn primary" :disabled="store.loading || !pwValue" @click="submitPassword">
-            {{ store.loading ? "Abrindo…" : "Importar" }}
-          </button>
-        </div>
-      </div>
-    </div>
-
     <div v-if="store.monthFilter" class="filter-badge">
       <span>Filtrado: <strong>{{ formatMonthFilter(store.monthFilter) }}</strong></span>
       <button class="clear-filter" @click="store.setMonthFilter(null)">✕ Limpar</button>
@@ -599,6 +556,25 @@ function refLabel(): string {
     <div v-if="store.loading" class="loading">
       <div class="shimmer" v-for="i in 8" :key="i" />
     </div>
+
+    <!-- Saldo em conta (016): stock, not flow — hidden until a statement provides it -->
+    <section v-if="positions.length" class="balances" data-testid="account-balances">
+      <h2>Saldo em conta</h2>
+      <div class="bal-card">
+        <div class="bal-total">
+          <span class="bal-lbl">Total</span>
+          <strong class="bal-val" :class="positionsTotal >= 0 ? 'ok-text' : 'red-text'">{{ fmt(positionsTotal) }}</strong>
+        </div>
+        <ul class="bal-list">
+          <li v-for="p in positions" :key="p.id">
+            <span class="bal-bank">{{ p.bank }}</span>
+            <span class="bal-acc">{{ PRODUCT_LABEL[p.product] ?? p.product }} {{ p.account }}</span>
+            <span class="bal-amount">{{ fmt(parseFloat(p.balance) || 0) }}</span>
+            <span class="bal-asof">extrato de {{ p.as_of.split("-").reverse().join("/") }}</span>
+          </li>
+        </ul>
+      </div>
+    </section>
 
     <template v-if="d && !store.loading">
       <!-- Indicadores -->
@@ -1138,21 +1114,6 @@ h1 { font-size: clamp(22px, 3vw, 32px); line-height: 1.1; letter-spacing: -.02em
 .qa-add:disabled { opacity: .5; }
 .qa-err { font-size: 12px; color: var(--red); flex-basis: 100%; }
 
-/* Password modal */
-.pw-overlay { position: fixed; inset: 0; background: rgba(20,33,30,.45); display: flex; align-items: center; justify-content: center; z-index: 200; }
-.pw-modal { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px; width: min(420px, 92vw); }
-.pw-modal h3 { font-size: 17px; font-weight: 800; color: var(--ink); margin-bottom: 6px; }
-.pw-sub { font-size: 13px; color: var(--ink-2); margin-bottom: 16px; }
-.pw-input { width: 100%; font-family: inherit; font-size: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); outline: none; }
-.pw-input:focus { border-color: var(--accent); }
-.pw-remember { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--ink-2); cursor: pointer; user-select: none; }
-.pw-remember input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
-.pw-err { margin-top: 10px; font-size: 12.5px; color: var(--red); }
-.pw-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-.pw-btn { font-family: inherit; font-size: 13px; font-weight: 700; padding: 8px 16px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
-.pw-btn.primary { background: var(--accent); color: #fff; }
-.pw-btn.primary:disabled { opacity: .5; cursor: default; }
-.pw-btn.ghost { background: var(--surface); border-color: var(--line); color: var(--ink-2); }
 .sub { color: var(--ink-2); margin-top: 10px; max-width: 72ch; font-size: 14px; }
 .sub b { color: var(--ink); font-weight: 700; }
 
@@ -1161,6 +1122,18 @@ h2 { font-size: 12px; letter-spacing: .10em; text-transform: uppercase; color: v
 h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
 /* KPIs */
+/* Saldo em conta (016) */
+.bal-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; }
+.bal-total { display: flex; align-items: baseline; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.bal-lbl { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2); }
+.bal-val { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+.bal-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.bal-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.bal-bank { font-size: 11px; font-weight: 600; color: var(--ink-2); background: var(--surface-2, #eef1f0); border: 1px solid var(--line); border-radius: 100px; padding: 1px 8px; }
+.bal-acc { color: var(--ink-2); }
+.bal-amount { margin-left: auto; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.bal-asof { font-size: 11px; color: var(--ink-2); }
+
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 16px 14px; box-shadow: var(--shadow); }
 .kpi .lbl { font-size: 12px; color: var(--ink-2); font-weight: 600; margin-bottom: 6px; }

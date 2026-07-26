@@ -9,9 +9,10 @@ import {
   listBankEntries,
   removeBankEntry,
   clearBankEntries,
+  getCoverageSummary,
 } from "@/services/tauri.service";
 import { useSettingsStore } from "@/stores/settings.store";
-import type { BankEntry, StatementPreview } from "@/types/api.types";
+import type { BankEntry, StatementPreview, CoverageSummary } from "@/types/api.types";
 
 const settings = useSettingsStore();
 const categories = computed(() => {
@@ -26,6 +27,18 @@ const pendingPath = ref<string | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const flash = ref<string | null>(null);
+// Data coverage (016): which months are partial and which have no statement at all.
+const coverage = ref<CoverageSummary[]>([]);
+const warning = ref<string | null>(null);
+
+const MONTH_ABBR = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+function monthLabel(ym: string): string {
+  const [y, m] = ym.split("-");
+  return `${MONTH_ABBR[parseInt(m, 10) - 1] ?? m}/${y}`;
+}
+const hasCoverageNotes = computed(() =>
+  coverage.value.some((c) => c.partial_months.length > 0 || c.gaps.length > 0)
+);
 
 const num = (s: string) => parseFloat(s) || 0;
 const brl = (s: string | number) => {
@@ -39,6 +52,7 @@ const total = computed(() => entries.value.reduce((a, e) => a + num(e.amount), 0
 
 async function load() {
   try { entries.value = await listBankEntries(); } catch (e) { error.value = msg(e); }
+  coverage.value = await getCoverageSummary();
 }
 function msg(e: unknown) { return e instanceof Error ? e.message : String(e); }
 
@@ -61,10 +75,13 @@ async function pick() {
 
 async function confirmImport() {
   if (!preview.value) return;
-  loading.value = true; error.value = null;
+  loading.value = true; error.value = null; warning.value = null;
   try {
-    const n = await saveBankStatement(preview.value.bank, preview.value.account, preview.value.included);
+    const res = await saveBankStatement(preview.value, preview.value.included);
+    const n = res.saved;
     flash.value = `${n} lançamento${n === 1 ? "" : "s"} importado${n === 1 ? "" : "s"}.`;
+    // Chain divergence is a notice, not a failure — the import went through.
+    warning.value = res.chain_warning ?? null;
     preview.value = null; pendingPath.value = null;
     await load();
   } catch (e) { error.value = msg(e); }
@@ -101,6 +118,27 @@ onMounted(async () => { await settings.loadConfig(); await load(); });
 
     <p v-if="error" class="state err">⚠ {{ error }}</p>
     <p v-if="flash" class="state ok">✓ {{ flash }}</p>
+    <p v-if="warning" class="state warn" data-testid="chain-warning">⚠ {{ warning }}</p>
+
+    <!-- Data coverage: what the imported statements actually cover (016) -->
+    <section v-if="hasCoverageNotes" class="card cov" data-testid="coverage-notes">
+      <h2>Cobertura dos extratos</h2>
+      <p class="sub2">O que os extratos importados cobrem — meses incompletos somam menos do que o real.</p>
+      <ul>
+        <li v-for="c in coverage" :key="`${c.bank}-${c.account}`">
+          <template v-if="c.partial_months.length || c.gaps.length">
+            <span class="bdg bank">{{ c.bank }}</span>
+            <span class="cov-acc">conta {{ c.account }}</span>
+            <span v-for="p in c.partial_months" :key="p.month" class="cov-tag partial">
+              {{ monthLabel(p.month) }} · dados até {{ p.until }}
+            </span>
+            <span v-for="g in c.gaps" :key="g" class="cov-tag gap">
+              {{ monthLabel(g) }} · sem extrato
+            </span>
+          </template>
+        </li>
+      </ul>
+    </section>
 
     <!-- Preview / review -->
     <section v-if="preview" class="card">
@@ -189,6 +227,17 @@ h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -.02em; margin: 0; }
 .btn.danger:hover { border-color: var(--clr-negative); color: var(--clr-negative); }
 .btn:disabled { opacity: .55; cursor: default; }
 .state { font-size: 13.5px; margin: 0 0 12px; } .state.err { color: var(--clr-negative); } .state.ok { color: var(--clr-accent); }
+.state.warn { color: var(--clr-amber, #9a6700); }
+
+/* Coverage notes (016) */
+.cov { padding: 14px 16px; margin-bottom: 12px; }
+.cov h2 { font-size: 14px; font-weight: 700; margin: 0 0 2px; color: var(--clr-text-primary); }
+.cov ul { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cov li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cov-acc { font-size: 12px; color: var(--clr-text-secondary); }
+.cov-tag { font-size: 11px; font-weight: 600; border-radius: 100px; padding: 2px 8px; }
+.cov-tag.partial { background: var(--clr-amber-soft, #f7e6cf); color: var(--clr-amber, #9a6700); }
+.cov-tag.gap { background: var(--clr-red-soft, #fde7e9); color: var(--clr-negative); }
 .card { background: var(--clr-surface); border: 1px solid var(--clr-stroke); border-radius: var(--radius-lg, 14px); box-shadow: var(--shadow-sm); padding: 18px 20px; margin-bottom: 16px; }
 .rev-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .rev-head h2 { font-size: 1rem; font-weight: 800; margin: 0; }

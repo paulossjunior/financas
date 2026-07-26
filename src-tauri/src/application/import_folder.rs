@@ -23,7 +23,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::application::import_invoice::{import_invoice, ImportError};
 use crate::application::store::SharedStore;
-use crate::domain::bank_statement::BankEntry;
+use crate::domain::account_position::{chain_warning, AccountPosition, Coverage};
+use crate::domain::bank_statement::{BankEntry, ParsedStatement};
 use crate::domain::{classify_statement, AppConfig, Categorizer};
 use crate::infrastructure::db::{persist, SharedDb};
 use crate::infrastructure::statement_reader::statement_reader_for;
@@ -44,13 +45,21 @@ pub struct FolderImportSummary {
     pub extratos: usize,
     pub entries: usize,
     pub ignored: Vec<IgnoredFile>,
+    /// Non-blocking notices worth showing once — today the statement chain check
+    /// (016): a new statement whose opening balance disagrees with the previous
+    /// period, which usually means a statement is missing in between.
+    #[serde(default)]
+    pub warnings: Vec<String>,
     pub directory: String,
 }
 
 impl FolderImportSummary {
     /// True when the scan produced nothing worth telling the user about.
     pub fn is_empty(&self) -> bool {
-        self.faturas == 0 && self.extratos == 0 && self.ignored.is_empty()
+        self.faturas == 0
+            && self.extratos == 0
+            && self.ignored.is_empty()
+            && self.warnings.is_empty()
     }
 }
 
@@ -115,9 +124,10 @@ pub fn import_from_folder(
                 FaturaOutcome::NotInvoice => {
                     // Maybe it's a statement saved as .xlsx.
                     match try_import_extrato(&path, db, cfg, &payslip_months) {
-                        Ok(n) => {
+                        Ok((n, warning)) => {
                             summary.extratos += 1;
                             summary.entries += n;
+                            summary.warnings.extend(warning);
                         }
                         Err(_) => summary.ignored.push(IgnoredFile {
                             name,
@@ -135,9 +145,10 @@ pub fn import_from_folder(
                 }),
             },
             Some("xls") => match try_import_extrato(&path, db, cfg, &payslip_months) {
-                Ok(n) => {
+                Ok((n, warning)) => {
                     summary.extratos += 1;
                     summary.entries += n;
+                    summary.warnings.extend(warning);
                 }
                 Err(_) => summary.ignored.push(IgnoredFile {
                     name,
@@ -154,12 +165,16 @@ pub fn import_from_folder(
                 let is_statement = statement_reader_for(path_str)
                     .is_some_and(|r| r.recognizes(path_str));
                 let is_encrypted = !is_statement && santander_invoice::is_encrypted_pdf(path_str);
-                let santander_pw = secrets::get_password_for("Santander");
+                // Touch the OS keychain lazily — only an encrypted PDF needs the
+                // credential. (Also keeps open-PDF test runs off the real keychain.)
+                let santander_pw =
+                    if is_encrypted { secrets::get_password_for("Santander") } else { None };
                 match pdf_route(is_statement, is_encrypted, santander_pw.is_some()) {
                     PdfRoute::Extrato => match try_import_extrato(&path, db, cfg, &payslip_months) {
-                        Ok(n) => {
+                        Ok((n, warning)) => {
                             summary.extratos += 1;
                             summary.entries += n;
+                            summary.warnings.extend(warning);
                         }
                         Err(e) => summary.ignored.push(IgnoredFile {
                             name,
@@ -278,17 +293,52 @@ fn pdf_route(is_statement: bool, is_encrypted: bool, has_invoice_password: bool)
     }
 }
 
-/// Read (via the strategy registry), classify and persist one statement file.
+/// Read (via the strategy registry), classify and persist one statement file —
+/// entries plus the stock layer (positions/coverage, 016). The chain warning, when
+/// the opening balance disagrees with the previous period, goes to the caller so the
+/// scan summary can surface it once.
 fn try_import_extrato(
     path: &Path,
     db: &SharedDb,
     cfg: &AppConfig,
     payslip_months: &HashSet<String>,
-) -> Result<usize, String> {
+) -> Result<(usize, Option<String>), String> {
     let path_str = path.to_str().ok_or("caminho inválido")?;
     let reader = statement_reader_for(path_str).ok_or("formato sem leitor de extrato")?;
     let parsed = reader.read(path_str)?;
-    save_entries(db, &classify_for_persist(&parsed, cfg, payslip_months))
+    let warning = persist_stock(db, &parsed)?;
+    let n = save_entries(db, &classify_for_persist(&parsed, cfg, payslip_months))?;
+    Ok((n, warning))
+}
+
+/// Persist positions + coverage of one parsed statement; returns the chain warning.
+fn persist_stock(db: &SharedDb, parsed: &ParsedStatement) -> Result<Option<String>, String> {
+    let mut guard = db.lock().map_err(|e| e.to_string())?;
+    let warning = match (parsed.coverage, parsed.previous_balance) {
+        (Some((start, _)), Some(saldo_anterior)) => {
+            let stored: Vec<AccountPosition> = guard
+                .load_account_positions()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|p| p.bank == parsed.bank && p.account == parsed.account)
+                .collect();
+            chain_warning(&stored, start, saldo_anterior)
+        }
+        _ => None,
+    };
+    if !parsed.positions.is_empty() {
+        guard.save_account_positions(&parsed.positions)?;
+    }
+    if let Some((start, end)) = parsed.coverage {
+        guard.save_statement_coverage(&[Coverage::new(
+            &parsed.bank,
+            &parsed.account,
+            start,
+            end,
+            "",
+        )])?;
+    }
+    Ok(warning)
 }
 
 /// Persist bank entries (dedup is the id UNIQUE constraint) and report how many.
@@ -449,6 +499,64 @@ mod tests {
         assert_eq!(summary.faturas, 1, "the valid invoice must still import");
         assert!(summary.ignored.iter().any(|f| f.name == "junk.xlsx"));
         assert!(summary.ignored.iter().any(|f| f.name == "garbage.xls"));
+    }
+
+    // T011 (016) — importing a statement also persists the stock layer, and doing it
+    // twice keeps exactly one position/coverage (deterministic ids).
+    #[test]
+    fn statement_import_persists_positions_and_coverage_idempotently() {
+        use crate::domain::account_position::Product;
+        use crate::domain::parse_banestes_text;
+
+        let db = new_shared_db(Database::open_in_memory().unwrap());
+        let parsed = parse_banestes_text(&extrato_text("banestes_extrato.txt")).unwrap();
+
+        for _ in 0..2 {
+            let warning = persist_stock(&db, &parsed).unwrap();
+            assert!(warning.is_none(), "sem posição anterior ⇒ sem aviso: {warning:?}");
+        }
+
+        let guard = db.lock().unwrap();
+        let positions = guard.load_account_positions().unwrap();
+        assert_eq!(positions.len(), 1, "reimportar não duplica");
+        assert_eq!(positions[0].product, Product::Corrente);
+        assert_eq!(positions[0].balance.to_string(), "231.30");
+        assert_eq!(positions[0].as_of.to_string(), "2026-07-25");
+        let covs = guard.load_statement_coverage().unwrap();
+        assert_eq!(covs.len(), 1);
+        assert_eq!((covs[0].start.to_string(), covs[0].end.to_string()),
+                   ("2026-07-01".to_string(), "2026-07-25".to_string()));
+    }
+
+    // T017 (016) — a statement whose opening balance disagrees with the stored
+    // previous position warns (and still imports).
+    #[test]
+    fn chain_divergence_warns_without_blocking() {
+        use crate::domain::account_position::{AccountPosition, Product};
+        use crate::domain::parse_banestes_text;
+        use chrono::NaiveDate;
+        use std::str::FromStr;
+
+        let db = new_shared_db(Database::open_in_memory().unwrap());
+        let parsed = parse_banestes_text(&extrato_text("banestes_extrato.txt")).unwrap();
+
+        // Previous period ended at a balance that does NOT match this statement's
+        // "Saldo Anterior" (7.337,41) — as if a statement in between were missing.
+        let stale = AccountPosition::new(
+            &parsed.bank,
+            &parsed.account,
+            Product::Corrente,
+            rust_decimal::Decimal::from_str("1000.00").unwrap(),
+            NaiveDate::from_ymd_opt(2026, 6, 30).unwrap(),
+            "jun.pdf",
+        );
+        db.lock().unwrap().save_account_positions(&[stale]).unwrap();
+
+        let warning = persist_stock(&db, &parsed).expect("importa mesmo divergindo");
+        let w = warning.expect("aviso de encadeamento");
+        assert!(w.contains("7.337,41") && w.contains("1.000,00"), "{w}");
+        // The new position was stored regardless (warning ≠ block).
+        assert_eq!(db.lock().unwrap().load_account_positions().unwrap().len(), 2);
     }
 
     // T030 — the whole `.pdf` routing policy, in one table (research R8).

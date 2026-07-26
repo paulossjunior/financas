@@ -2,8 +2,11 @@
 //! Isolated here so other banks can add their own reader later; the domain
 //! parsing/classification stays format-agnostic on the row grid.
 
+use std::path::Path;
+
 use calamine::{open_workbook_auto, Data, Reader};
 
+use crate::domain::account_position::AccountPosition;
 use crate::domain::bank_statement::{parse_statement_rows, ParsedStatement};
 use crate::infrastructure::statement_reader::StatementReader;
 
@@ -45,6 +48,14 @@ pub fn read_statement(path: &str) -> Result<ParsedStatement, String> {
         .collect();
     let mut parsed = parse_statement_rows(&rows);
     parsed.bank = "BTG".to_string();
+    // Positions leave the grid parser bank-less (it doesn't know the reader); rebuild
+    // them with the bank so the deterministic id is complete.
+    let filename = Path::new(path).file_name().and_then(|s| s.to_str()).unwrap_or(path);
+    parsed.positions = parsed
+        .positions
+        .iter()
+        .map(|p| AccountPosition::new(&parsed.bank, &parsed.account, p.product, p.balance, p.as_of, filename))
+        .collect();
     if parsed.entries.is_empty() {
         return Err("Não encontrei lançamentos no extrato (formato não reconhecido).".into());
     }

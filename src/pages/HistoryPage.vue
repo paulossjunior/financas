@@ -1,11 +1,14 @@
 <script setup lang="ts">
-// Faturas history page — import card invoices (.xlsx) and browse/remove them grouped by month.
+// Faturas history page — import card invoices (BTG .xlsx, Santander .pdf) and
+// browse/remove them grouped by month. Encrypted files prompt for the bank's
+// password here (saved per bank in the OS keychain when "remember" is checked).
 import { onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { useInvoiceStore } from "@/stores/invoice.store";
 import ImportButton from "@/components/import/ImportButton.vue";
 import ImportWarnings from "@/components/import/ImportWarnings.vue";
+import PasswordModal from "@/components/import/PasswordModal.vue";
 import MonthGroupComponent from "@/components/history/MonthGroup.vue";
 import type { ParseWarning } from "@/types/api.types";
 import { ref } from "vue";
@@ -19,14 +22,69 @@ onMounted(async () => {
   await store.loadDashboard();
 });
 
+// Password prompt state. Files import one by one: each encrypted file whose bank
+// has no saved password opens the modal labeled with THAT bank (banks have
+// different passwords); once remembered, the rest of the batch flows silently.
+const pwOpen = ref(false);
+const pwBank = ref<string | null>(null);
+const pwError = ref<string | null>(null);
+const importQueue = ref<string[]>([]);
+
+function bankFromCode(msg: string): string | null {
+  const [, bank] = msg.split(":");
+  return bank || null;
+}
+
 async function handleImport(paths: string[]): Promise<void> {
-  try {
-    const results = await store.importInvoices(paths);
-    lastWarnings.value = results.flatMap((r) => r.warnings);
-    await store.loadDashboard();
-  } catch {
-    // error set in store
+  importQueue.value = [...paths];
+  lastWarnings.value = [];
+  await processQueue();
+}
+
+/// Import the queue head-first. `password` applies only to the file that asked.
+async function processQueue(password?: string, remember?: boolean): Promise<void> {
+  while (importQueue.value.length > 0) {
+    const path = importQueue.value[0];
+    try {
+      const results = await store.importInvoices([path], password, remember);
+      lastWarnings.value.push(...results.flatMap((r) => r.warnings));
+      importQueue.value.shift();
+      password = undefined;
+      remember = undefined;
+      pwOpen.value = false;
+      pwError.value = null;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.startsWith("ENCRYPTED_FILE")) {
+        pwBank.value = bankFromCode(msg);
+        pwError.value = password ? "Informe a senha do arquivo." : null;
+        pwOpen.value = true;
+        return; // wait for the modal; the queue resumes on submit
+      }
+      if (msg.startsWith("WRONG_PASSWORD")) {
+        pwBank.value = bankFromCode(msg);
+        pwError.value = "Senha incorreta. Tente novamente.";
+        pwOpen.value = true;
+        return;
+      }
+      // Other errors land in the store's error bar; stop the batch there.
+      break;
+    }
   }
+  await store.loadDashboard();
+}
+
+function submitPassword(password: string, remember: boolean): void {
+  void processQueue(password, remember);
+}
+
+async function cancelPassword(): Promise<void> {
+  // Canceling skips the file that asked and the rest of the batch — predictable,
+  // and anything already imported stays.
+  importQueue.value = [];
+  pwOpen.value = false;
+  pwError.value = null;
+  await store.loadDashboard();
 }
 
 async function handleFilterMonth(month: string): Promise<void> {
@@ -61,6 +119,15 @@ async function handleRemoveInvoice(invoiceId: string): Promise<void> {
     </div>
 
     <ImportWarnings :warnings="lastWarnings" />
+
+    <PasswordModal
+      :open="pwOpen"
+      :loading="store.loading"
+      :error="pwError"
+      :bank="pwBank"
+      @submit="submitPassword"
+      @cancel="cancelPassword"
+    />
 
     <div v-if="store.error" class="msg-bar msg-bar--error">
       <span>⚠ {{ store.error }}</span>

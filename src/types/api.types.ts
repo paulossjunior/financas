@@ -100,6 +100,34 @@ export interface BankEntry {
   kind: "income" | "expense";
 }
 
+/** A balance the statement printed for an account/product (feature 016). */
+export interface AccountPosition {
+  id: string;
+  bank: string;
+  account: string;
+  product: "corrente" | "poupanca";
+  /** Decimal as string — parse with parseFloat only for display. */
+  balance: string;
+  /** Base date of the balance (YYYY-MM-DD). */
+  as_of: string;
+  source_file: string;
+}
+
+/** Which months have partial or missing statement data, per account. */
+export interface CoverageSummary {
+  bank: string;
+  account: string;
+  partial_months: { month: string; until: string }[];
+  gaps: string[];
+}
+
+/** Outcome of importing/saving a statement. */
+export interface SaveStatementResult {
+  saved: number;
+  /** Set when the opening balance disagrees with the previous period (not a blocker). */
+  chain_warning?: string;
+}
+
 export interface StatementPreview {
   /** Bank detected from the file itself ("BTG" | "Banestes"). */
   bank: string;
@@ -107,6 +135,10 @@ export interface StatementPreview {
   account: string;
   included: ClassifiedEntry[];
   excluded: ClassifiedEntry[];
+  /** Stock data read from the statement — passed back on save (feature 016). */
+  positions: AccountPosition[];
+  coverage?: [string, string] | null;
+  previous_balance?: string | null;
 }
 
 export interface IpcaGroup {
@@ -392,5 +424,7 @@ export interface FolderImportSummary {
   extratos: number;
   entries: number;
   ignored: IgnoredFile[];
+  /** Non-blocking notices (e.g. statement chain divergence). */
+  warnings?: string[];
   directory: string;
 }

@@ -15,7 +15,10 @@ function formatDate(iso: string): string {
 <template>
   <div class="invoice-row">
     <div class="invoice-info">
-      <span class="filename" :title="props.invoice.filename">{{ props.invoice.filename }}</span>
+      <span class="name-line">
+        <span class="bank-chip" data-testid="invoice-bank">{{ props.invoice.bank }}</span>
+        <span class="filename" :title="props.invoice.filename">{{ props.invoice.filename }}</span>
+      </span>
       <span class="meta">{{ props.invoice.row_count }} transações · importado {{ formatDate(props.invoice.imported_at) }}</span>
     </div>
     <button
@@ -46,6 +49,24 @@ function formatDate(iso: string): string {
   flex-direction: column;
   gap: 0.1rem;
   min-width: 0;
+}
+.name-line {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+/* same look as the bank tags on Extrato / Despesas & Receitas (consistency, H4) */
+.bank-chip {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--clr-text-secondary);
+  background: var(--clr-surface-alt, #eef1f0);
+  border: 1px solid var(--clr-stroke);
+  border-radius: 100px;
+  padding: 0.08rem 0.5rem;
+  letter-spacing: 0.02em;
 }
 .filename {
   font-size: 0.8125rem;

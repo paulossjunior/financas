@@ -52,7 +52,21 @@ pub async fn import_invoices(
                     }
                 }
             }
-            Err(e) => return Err(e.to_string()),
+            Err(e) => {
+                // Password codes carry the bank: banks have different passwords, so
+                // the UI must ask for (and label) the right one per file.
+                let code = e.to_string();
+                let enriched = match (&code[..], bank) {
+                    ("ENCRYPTED_FILE" | "WRONG_PASSWORD", Some(b)) => format!("{code}:{b}"),
+                    _ => code,
+                };
+                // Persist what already imported before surfacing the error, so the
+                // store and the database never drift apart mid-batch.
+                drop(store_lock);
+                let snapshot = store.lock().map_err(|e| e.to_string())?.list_owned();
+                persist(&db, &snapshot);
+                return Err(enriched);
+            }
         }
     }
 

@@ -33,7 +33,9 @@ const importErr = ref("");
 function summaryText(s: FolderImportSummary): string {
   const parts = [`${s.faturas} fatura(s)`, `${s.extratos} extrato(s)`];
   if (s.ignored.length) parts.push(`${s.ignored.length} ignorado(s)`);
-  return `Importado: ${parts.join(", ")}.`;
+  let text = `Importado: ${parts.join(", ")}.`;
+  if (s.warnings?.length) text += ` ⚠ ${s.warnings.join(" ")}`;
+  return text;
 }
 
 onMounted(async () => {

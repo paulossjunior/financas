@@ -31,7 +31,13 @@ pub fn is_banestes_pdf(path: &str) -> bool {
 /// Read + parse a Banestes statement PDF.
 pub fn read_statement(path: &str) -> Result<ParsedStatement, String> {
     let text = extract_text(path)?;
-    parse_banestes_text(&text)
+    let mut parsed = parse_banestes_text(&text)?;
+    // Positions carry which file produced them (traceability; id ignores this).
+    let filename = Path::new(path).file_name().and_then(|s| s.to_str()).unwrap_or(path);
+    for p in &mut parsed.positions {
+        p.source_file = filename.to_string();
+    }
+    Ok(parsed)
 }
 
 /// Strategy: the Banestes statement is a PDF whose extracted text carries the whole
