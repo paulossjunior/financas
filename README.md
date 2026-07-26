@@ -17,6 +17,10 @@ Aplicativo desktop de finanças pessoais — importa faturas do cartão **BTG** 
 - **Contracheque SouGov.br** (PDF): extrai e classifica tudo — salário × bônus (inclui "Cargo de Direção – CD" como bônus temporário), descontos (IR, GEAP, FUNPRESP, PSS), detecção de "wash" (adiantamentos que se anulam) e líquido por item. Importa vários de uma vez.
 - **Extrato bancário** — **Banestes** (.pdf) e **BTG** (.xls/.xlsx), com o banco reconhecido pelo próprio arquivo: lê entradas/saídas, **categoriza** (regras do app + fallback do banco quando houver), **exclui** o que já é contado (fatura do cartão, salário com contracheque, transferências internas), com **prévia** e **dedup**. Entra no painel como avulso/renda. No Banestes, os valores lidos são conferidos contra as entradas/saídas e os saldos impressos no extrato — se não fechar, nada é importado.
 
+**Saldo e cobertura** (feature 016)
+- **Saldo em conta** no painel, lido do próprio extrato (conta corrente e poupança, com a data do extrato) — o app passa a responder "quanto eu tenho", não só "quanto gastei".
+- **Cobertura dos dados**: mês incompleto aparece como "dados até DD/MM" e mês sem extrato como buraco; se o saldo anterior de um extrato não bater com o final do anterior, o app avisa (provável extrato faltando).
+
 **Previsão do cartão**
 - Gráfico da **projeção de pagamento** dos próximos meses a partir dos parcelamentos já feitos (Ano completo, Mês resumido) + tabela de valores a pagar.
 

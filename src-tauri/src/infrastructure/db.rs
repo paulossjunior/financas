@@ -12,6 +12,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
+use crate::domain::account_position::{AccountPosition, Coverage, Product};
 use crate::domain::bank_statement::BankEntry;
 use crate::domain::invoice::{Invoice, YearMonth};
 use crate::domain::manual_entry::{EntryKind, ManualEntry};
@@ -87,6 +88,25 @@ impl Database {
                     FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_tx_invoice ON transactions(invoice_id);
+
+                CREATE TABLE IF NOT EXISTS account_positions (
+                    id          TEXT PRIMARY KEY,
+                    bank        TEXT NOT NULL,
+                    account     TEXT NOT NULL,
+                    product     TEXT NOT NULL,
+                    balance     TEXT NOT NULL,
+                    as_of       TEXT NOT NULL,
+                    source_file TEXT NOT NULL,
+                    imported_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS statement_coverage (
+                    id          TEXT PRIMARY KEY,
+                    bank        TEXT NOT NULL,
+                    account     TEXT NOT NULL,
+                    start       TEXT NOT NULL,
+                    end         TEXT NOT NULL,
+                    source_file TEXT NOT NULL
+                );
 
                 CREATE TABLE IF NOT EXISTS settings (
                     key   TEXT PRIMARY KEY,
@@ -777,9 +797,120 @@ impl Database {
         Ok(())
     }
 
+    /// Clearing statement data removes the whole layer it produced: entries AND the
+    /// positions/coverage snapshots — no orphan balance may survive its statement.
     pub fn clear_bank_entries(&mut self) -> Result<(), String> {
         self.conn.execute("DELETE FROM bank_entries", []).map_err(|e| e.to_string())?;
+        self.conn.execute("DELETE FROM account_positions", []).map_err(|e| e.to_string())?;
+        self.conn.execute("DELETE FROM statement_coverage", []).map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    // ── Account positions + statement coverage (feature 016) ──
+
+    /// Upsert positions (deterministic ids ⇒ re-imports replace, never duplicate).
+    pub fn save_account_positions(&mut self, items: &[AccountPosition]) -> Result<(), String> {
+        let tx = self.conn.transaction().map_err(|e| e.to_string())?;
+        for p in items {
+            tx.execute(
+                "INSERT OR REPLACE INTO account_positions
+                   (id, bank, account, product, balance, as_of, source_file, imported_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))",
+                params![
+                    p.id,
+                    p.bank,
+                    p.account,
+                    p.product.as_str(),
+                    p.balance.to_string(),
+                    p.as_of.to_string(),
+                    p.source_file,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    pub fn load_account_positions(&self) -> Result<Vec<AccountPosition>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, bank, account, product, balance, as_of, source_file FROM account_positions ORDER BY as_of")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, bank, account, product, balance, as_of, source_file) =
+                row.map_err(|e| e.to_string())?;
+            out.push(AccountPosition {
+                id,
+                bank,
+                account,
+                product: Product::from_str(&product)
+                    .ok_or_else(|| format!("produto desconhecido: {product}"))?,
+                balance: balance.parse().map_err(|e| format!("saldo inválido: {e}"))?,
+                as_of: as_of.parse().map_err(|e| format!("data inválida: {e}"))?,
+                source_file,
+            });
+        }
+        Ok(out)
+    }
+
+    pub fn save_statement_coverage(&mut self, items: &[Coverage]) -> Result<(), String> {
+        let tx = self.conn.transaction().map_err(|e| e.to_string())?;
+        for c in items {
+            tx.execute(
+                "INSERT OR REPLACE INTO statement_coverage
+                   (id, bank, account, start, end, source_file)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![c.id, c.bank, c.account, c.start.to_string(), c.end.to_string(), c.source_file],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    pub fn load_statement_coverage(&self) -> Result<Vec<Coverage>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, bank, account, start, end, source_file FROM statement_coverage ORDER BY start")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, bank, account, start, end, source_file) = row.map_err(|e| e.to_string())?;
+            out.push(Coverage {
+                id,
+                bank,
+                account,
+                start: start.parse().map_err(|e| format!("data inválida: {e}"))?,
+                end: end.parse().map_err(|e| format!("data inválida: {e}"))?,
+                source_file,
+            });
+        }
+        Ok(out)
     }
 
     // ── Recurring categories + dismissed suggestions (feature 010) ──
@@ -1055,6 +1186,46 @@ mod tests {
             txs,
             default_datetime(),
         )
+    }
+
+    // T005 (016) — positions/coverage: roundtrip, idempotent upsert, coupled clear.
+    #[test]
+    fn positions_and_coverage_roundtrip_idempotent_and_cleared_with_entries() {
+        use crate::domain::account_position::{AccountPosition, Coverage, Product};
+        use std::str::FromStr;
+
+        let mut db = Database::open_in_memory().unwrap();
+        let pos = AccountPosition::new(
+            "Banestes",
+            "44/123-4",
+            Product::Corrente,
+            rust_decimal::Decimal::from_str("231.30").unwrap(),
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 25).unwrap(),
+            "extrato_jul.pdf",
+        );
+        let cov = Coverage::new(
+            "Banestes",
+            "44/123-4",
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 25).unwrap(),
+            "extrato_jul.pdf",
+        );
+
+        // Saving twice must not duplicate (deterministic ids → REPLACE).
+        for _ in 0..2 {
+            db.save_account_positions(std::slice::from_ref(&pos)).unwrap();
+            db.save_statement_coverage(std::slice::from_ref(&cov)).unwrap();
+        }
+        let loaded = db.load_account_positions().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].balance, rust_decimal::Decimal::from_str("231.30").unwrap());
+        assert_eq!(loaded[0].product, Product::Corrente);
+        assert_eq!(db.load_statement_coverage().unwrap().len(), 1);
+
+        // FR-011: clearing statement data removes positions and coverage too.
+        db.clear_bank_entries().unwrap();
+        assert!(db.load_account_positions().unwrap().is_empty());
+        assert!(db.load_statement_coverage().unwrap().is_empty());
     }
 
     /// The invoices table is bank-generic: whatever bank the reader strategy stamps

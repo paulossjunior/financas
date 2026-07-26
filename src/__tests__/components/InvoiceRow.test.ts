@@ -21,6 +21,13 @@ describe("InvoiceRow", () => {
     expect(wrapper.text()).toContain("2026-05-fatura-btg.xlsx");
   });
 
+  it("renders the bank badge", () => {
+    const wrapper = mount(InvoiceRow, {
+      props: { invoice: makeInvoice({ bank: "Santander" }) },
+    });
+    expect(wrapper.get('[data-testid="invoice-bank"]').text()).toBe("Santander");
+  });
+
   it("renders row_count", () => {
     const wrapper = mount(InvoiceRow, { props: { invoice: makeInvoice({ row_count: 42 }) } });
     expect(wrapper.text()).toContain("42");

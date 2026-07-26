@@ -47,7 +47,14 @@ docs/                    ARCHITECTURE.md, MANUAL.md, este guia
 8. **Máscara de dinheiro**: inputs de valor usam `src/utils/money.ts` (`maskMoney`/`parseMoneyBR`).
 9. **UI/UX**: ao mexer em tela/fluxo/erro, aplique a skill `nielsen-heuristics`
    (`.claude/skills/nielsen-heuristics/SKILL.md`).
-10. **Chave de id do extrato é congelada**: a **primeira** ocorrência de um lançamento usa
+10. **Saldo/cobertura (016)**: posição é identificada por `(banco, conta, produto, as_of)` —
+    UUIDv5 determinístico, então reimportar substitui em vez de duplicar; a **posição
+    corrente** é sempre a de maior `as_of` (nunca "a última importada"). `clear_bank_entries`
+    limpa `bank_entries` + `account_positions` + `statement_coverage` juntos (nada de saldo
+    órfão). Na `Conferencia` do Banestes, `segmentos: SemDados` é **tolerado** de propósito
+    (extrato pode não imprimir saldos parciais); `saldos` e `entradas_saidas` continuam
+    bloqueando por ausência.
+11. **Chave de id do extrato é congelada**: a **primeira** ocorrência de um lançamento usa
     `bank:{conta}:{data}:{desc normalizada}:{valor}` (ver `bank_statement::entry_key`).
     Mudar essa string faz *todo* lançamento já gravado reimportar como novo. Repetições
     idênticas no mesmo arquivo recebem sufixo `#n` (`entry_ids`) — nunca colapse duas em uma.
@@ -194,6 +201,7 @@ Setting `import_directory` (`Option<String>` no `AppConfig`; vazio = desligado).
 | 012 | Backup e restauração do banco |
 | 013 | Pasta de importação automática |
 | 014 | Extrato Banestes (.pdf): adapter por banco, entradas/saídas conferidas contra os totais do extrato |
+| 016 | Saldo em conta + cobertura de dados + conferência por segmento (dados que o extrato já imprimia) |
 | 015 | Fatura Santander (.pdf cifrado): 2º InvoiceReader, conferência pelo Resumo da Fatura, senha por banco no keychain |
 
 Cada `specs/NNN-*/` tem spec/plan/research/data-model/contracts/quickstart/tasks.

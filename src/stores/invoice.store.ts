@@ -62,8 +62,9 @@ export const useInvoiceStore = defineStore("invoice", () => {
       return results;
     } catch (e) {
       const msg = String(e instanceof Error ? e.message : e);
-      // Password-flow codes are handled by the UI, not shown in the error bar.
-      if (msg !== "ENCRYPTED_FILE" && msg !== "WRONG_PASSWORD") {
+      // Password-flow codes (optionally suffixed ":<bank>") are handled by the UI's
+      // prompt, not shown in the error bar.
+      if (!msg.startsWith("ENCRYPTED_FILE") && !msg.startsWith("WRONG_PASSWORD")) {
         error.value = msg;
       }
       throw e;

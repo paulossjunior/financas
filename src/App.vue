@@ -12,7 +12,10 @@ onMounted(async () => {
   if (!s) return;
   const parts = [`${s.faturas} fatura(s)`, `${s.extratos} extrato(s)`];
   if (s.ignored.length) parts.push(`${s.ignored.length} ignorado(s)`);
-  importToast.value = `Importação automática: ${parts.join(", ")}.`;
+  let text = `Importação automática: ${parts.join(", ")}.`;
+  // Non-blocking notices (e.g. a statement chain gap) ride along — shown once.
+  if (s.warnings?.length) text += ` ⚠ ${s.warnings.join(" ")}`;
+  importToast.value = text;
   setTimeout(() => (importToast.value = null), 8000);
 });
 

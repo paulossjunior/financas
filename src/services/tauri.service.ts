@@ -22,6 +22,9 @@ import type {
   BackupResult,
   RestoreResult,
   FolderImportSummary,
+  AccountPosition,
+  CoverageSummary,
+  SaveStatementResult,
 } from "@/types/api.types";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -71,9 +74,10 @@ export async function importInvoices(
     return await invoke<ImportResult[]>("import_invoices", { paths, password, remember });
   } catch (e) {
     const raw = String(e);
-    // Preserve these codes so the UI can prompt for a password.
-    if (raw.includes("ENCRYPTED_FILE")) throw new Error("ENCRYPTED_FILE");
-    if (raw.includes("WRONG_PASSWORD")) throw new Error("WRONG_PASSWORD");
+    // Preserve these codes (with the ":<bank>" suffix — banks have different
+    // passwords) so the UI can prompt for the right credential.
+    const pw = raw.match(/(ENCRYPTED_FILE|WRONG_PASSWORD)(:[A-Za-zÀ-ú]+)?/);
+    if (pw) throw new Error(pw[0]);
     throw new Error(mapError(raw));
   }
 }
@@ -145,20 +149,49 @@ export async function previewBankStatement(path: string): Promise<StatementPrevi
 }
 
 /** Import the statement's included entries (dedup). Returns how many were saved. */
-export async function importBankStatement(path: string): Promise<number> {
+export async function importBankStatement(path: string): Promise<SaveStatementResult> {
   try {
-    return await invoke<number>("import_bank_statement", { path });
+    return await invoke<SaveStatementResult>("import_bank_statement", { path });
   } catch (e) {
     throw new Error(mapError(String(e)));
   }
 }
 
 /** Save the (edited) included entries from a preview. Returns how many were saved. */
-export async function saveBankStatement(bank: string, account: string, entries: ClassifiedEntry[]): Promise<number> {
+export async function saveBankStatement(
+  preview: StatementPreview,
+  entries: ClassifiedEntry[]
+): Promise<SaveStatementResult> {
   try {
-    return await invoke<number>("save_bank_statement", { bank, account, entries });
+    return await invoke<SaveStatementResult>("save_bank_statement", {
+      bank: preview.bank,
+      account: preview.account,
+      entries,
+      // Stock layer read from the file travels with the confirmation (016).
+      positions: preview.positions ?? [],
+      coverage: preview.coverage ?? null,
+      previousBalance: preview.previous_balance ?? null,
+    });
   } catch (e) {
     throw new Error(mapError(String(e)));
+  }
+}
+
+/** Current balance per account/product (feature 016). */
+export async function listAccountPositions(): Promise<AccountPosition[]> {
+  try {
+    return await invoke<AccountPosition[]>("list_account_positions");
+  } catch {
+    return [];
+  }
+}
+
+/** Partial months and gaps in statement coverage, per account (feature 016). */
+export async function getCoverageSummary(): Promise<CoverageSummary[]> {
+  try {
+    return await invoke<CoverageSummary[]>("coverage_summary");
+  } catch {
+    return [];
   }
 }
 

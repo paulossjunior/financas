@@ -25,6 +25,7 @@
 
 use std::sync::OnceLock;
 
+use chrono::NaiveDate;
 use regex::Regex;
 use rust_decimal::Decimal;
 
@@ -37,6 +38,13 @@ fn re_ag_conta() -> &'static Regex {
 fn re_cliente() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
     R.get_or_init(|| Regex::new(r"(?i)cliente:\s*(.+?)(?:\s+per[íi]odo:.*)?$").unwrap())
+}
+/// Covered period on the header line: `Período: 01/07/2026 à 25/07/2026`.
+fn re_periodo() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        Regex::new(r"(?i)per[íi]odo:\s*(\d{2})/(\d{2})/(\d{4})\s*(?:à|a)\s*(\d{2})/(\d{2})/(\d{4})").unwrap()
+    })
 }
 /// Money at the end of a line, optional minus (Banestes prints "- 700,00").
 fn re_money_end() -> &'static Regex {
@@ -85,6 +93,8 @@ pub struct ExtratoBanestes {
     pub agencia: String,
     pub conta: String,
     pub titular: String,
+    /// Header line: period the statement covers (016 — coverage).
+    pub periodo: Option<(NaiveDate, NaiveDate)>,
     /// "Saldo Anterior" — first line of the table.
     pub saldo_anterior: Option<Decimal>,
     /// "Saldo Conta" — footer; the checking account alone.
@@ -92,11 +102,15 @@ pub struct ExtratoBanestes {
     /// "Saldo Total" — footer; on a consolidated statement this sums *every* product
     /// (poupança, investimento…), not just the account the movements belong to.
     pub saldo_total: Option<Decimal>,
+    /// "Saldo Poupança" — footer of a consolidated statement (016 — savings position).
+    pub saldo_poupanca: Option<Decimal>,
     /// Summary block at the top: total credited in the period.
     pub entradas_declaradas: Option<Decimal>,
     /// Summary block at the top: total debited in the period.
     pub saidas_declaradas: Option<Decimal>,
     pub movimentos: Vec<RawEntry>,
+    /// Stretches closed by the intermediate printed balances (016).
+    pub segmentos: Vec<Segmento>,
 }
 
 /// Outcome of one integrity check.
@@ -109,15 +123,33 @@ pub enum Checagem {
     SemDados { faltou: &'static str },
 }
 
-/// The two independent checks a Banestes statement allows.
+/// One stretch of the statement, closed by an intermediate printed balance
+/// ("JUL/26 Saldo 6.637,41"). The first stretch opens at "Saldo Anterior".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Segmento {
+    /// Posting day of the stretch's last movement — labels the error message.
+    pub dia: Option<u32>,
+    /// Balance the statement printed to close the stretch.
+    pub saldo_impresso: Decimal,
+    /// Σ of the movements read inside the stretch.
+    pub soma_trecho: Decimal,
+}
+
+/// The three independent checks a Banestes statement allows.
 ///
 /// `saldos` catches lost/duplicated/misread lines (the running balance stops adding
 /// up); `entradas_saidas` additionally catches a flipped sign, which keeps the net
-/// sum plausible but moves value between the two columns.
+/// sum plausible but moves value between the two columns; `segmentos` catches errors
+/// that **cancel each other out** in the period total (a lost +100 and a lost −100),
+/// which neither of the other two can see.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Conferencia {
     pub saldos: Checagem,
     pub entradas_saidas: Checagem,
+    pub segmentos: Checagem,
+    /// Posting day of the first diverging stretch, when there is one — the user
+    /// compares that day against the paper.
+    pub segmento_dia: Option<u32>,
 }
 
 impl Conferencia {
@@ -145,6 +177,16 @@ impl Conferencia {
                     ))
                 }
             }
+        }
+        // Segment check (016): `Divergiu` blocks like the others, but `SemDados` is
+        // TOLERATED — the intermediate balances are a bonus the layout may not print,
+        // and the two total checks above already stand guard.
+        if let Checagem::Divergiu { diferenca } = &self.segmentos {
+            let onde = match self.segmento_dia {
+                Some(dia) => format!("no dia {dia:02} do extrato"),
+                None => "em um dos dias do extrato".to_string(),
+            };
+            return Err(reconcile_error(&onde, *diferenca));
         }
         Ok(())
     }
@@ -176,6 +218,20 @@ impl ExtratoBanestes {
                 if let Some(c) = re_cliente().captures(l) {
                     this.titular = c[1].trim().to_string();
                 }
+                if let Some(c) = re_periodo().captures(l) {
+                    let mk = |d: &str, m: &str, y: &str| {
+                        NaiveDate::from_ymd_opt(
+                            y.parse().unwrap_or(0),
+                            m.parse().unwrap_or(0),
+                            d.parse().unwrap_or(0),
+                        )
+                    };
+                    if let (Some(start), Some(end)) =
+                        (mk(&c[1], &c[2], &c[3]), mk(&c[4], &c[5], &c[6]))
+                    {
+                        this.periodo = Some((start, end));
+                    }
+                }
             }
         }
         if let Some((entradas, saidas)) = declared_totals(&lines[..header]) {
@@ -186,6 +242,8 @@ impl ExtratoBanestes {
         let mut day: Option<u32> = None;
         let mut month_year: Option<(u32, i32)> = None;
         let mut pending: Option<String> = None;
+        // Running sum of the stretch currently open (016 — segment reconciliation).
+        let mut soma_trecho_atual = Decimal::ZERO;
 
         for raw in &lines[header + 1..] {
             let mut rest = raw.trim();
@@ -221,8 +279,7 @@ impl ExtratoBanestes {
 
             let n = norm(rest);
             if n.starts_with("SALDO") {
-                // Balance lines carry state, never movements. Kinds we don't track
-                // ("Saldo Poupança" on a consolidated statement) are simply dropped.
+                // Balance lines carry state, never movements.
                 let value = re_money().find(rest).and_then(|m| parse_amount(m.as_str()));
                 if n.starts_with("SALDO ANTERIOR") && this.saldo_anterior.is_none() {
                     this.saldo_anterior = value;
@@ -230,6 +287,18 @@ impl ExtratoBanestes {
                     this.saldo_total = value;
                 } else if n.starts_with("SALDO CONTA") {
                     this.saldo_conta = value;
+                } else if n.starts_with("SALDO POUPANCA") {
+                    this.saldo_poupanca = value;
+                } else if let Some(saldo_impresso) = value {
+                    // Plain "Saldo <valor>" — an intermediate balance closing a
+                    // stretch of movements (016). `soma_trecho` is what we read since
+                    // the previous one; `conferir` compares the running chain.
+                    this.segmentos.push(Segmento {
+                        dia: day,
+                        saldo_impresso,
+                        soma_trecho: soma_trecho_atual,
+                    });
+                    soma_trecho_atual = Decimal::ZERO;
                 }
                 pending = None;
                 continue;
@@ -261,6 +330,7 @@ impl ExtratoBanestes {
             let (transaction, description, date) = split_movement(&head, day, month_year);
             let Some(date) = date else { continue };
 
+            soma_trecho_atual += amount;
             this.movimentos.push(RawEntry {
                 month: date[..7].to_string(),
                 date,
@@ -317,19 +387,65 @@ impl ExtratoBanestes {
             _ => Checagem::SemDados { faltou: "o quadro de entradas e saídas" },
         };
 
-        Conferencia { saldos, entradas_saidas }
+        // Segment chain: each printed intermediate balance must equal the previous
+        // balance plus what was read in between. Catches errors that cancel out in
+        // the period total (a lost +100 and a lost −100), invisible to the two above.
+        let (segmentos, segmento_dia) = match self.saldo_anterior {
+            Some(saldo_anterior) if !self.segmentos.is_empty() => {
+                let mut esperado = saldo_anterior;
+                let mut falha = None;
+                for seg in &self.segmentos {
+                    esperado += seg.soma_trecho;
+                    if esperado != seg.saldo_impresso {
+                        falha = Some((seg.dia, esperado - seg.saldo_impresso));
+                        break;
+                    }
+                    esperado = seg.saldo_impresso;
+                }
+                match falha {
+                    Some((dia, diferenca)) => (Checagem::Divergiu { diferenca }, dia),
+                    None => (Checagem::Fechou, None),
+                }
+            }
+            // No intermediate balances printed (or no opening balance): tolerated —
+            // `exigir()` does not block on this one.
+            _ => (Checagem::SemDados { faltou: "os saldos parciais" }, None),
+        };
+
+        Conferencia { saldos, entradas_saidas, segmentos, segmento_dia }
     }
 
     /// Converge on the shared statement model the whole downstream pipeline eats.
     pub fn into_parsed(self) -> ParsedStatement {
+        use crate::domain::account_position::{AccountPosition, Product};
+
+        let bank = "Banestes";
+        // Frozen format: bank-entry ids hash `account` (see
+        // `bank_statement::entry_key`) — changing this string re-imports every
+        // persisted Banestes entry as new rows.
+        let account = format!("{}/{}", self.agencia, self.conta);
+
+        // Positions need a base date; without the printed period there is no honest
+        // `as_of`, so no position is invented (016). `source_file` is stamped by the
+        // I/O layer, which knows the filename.
+        let mut positions = Vec::new();
+        if let Some((_, end)) = self.periodo {
+            if let Some(balance) = self.saldo_conta.or(self.saldo_total) {
+                positions.push(AccountPosition::new(bank, &account, Product::Corrente, balance, end, ""));
+            }
+            if let Some(balance) = self.saldo_poupanca {
+                positions.push(AccountPosition::new(bank, &account, Product::Poupanca, balance, end, ""));
+            }
+        }
+
         ParsedStatement {
-            bank: "Banestes".to_string(),
-            // Frozen format: bank-entry ids hash `account` (see
-            // `bank_statement::entry_key`) — changing this string re-imports every
-            // persisted Banestes entry as new rows.
-            account: format!("{}/{}", self.agencia, self.conta),
+            bank: bank.to_string(),
+            account,
             holder: self.titular,
             entries: self.movimentos,
+            positions,
+            coverage: self.periodo,
+            previous_balance: self.saldo_anterior,
         }
     }
 }
@@ -618,7 +734,106 @@ Saldo Total  100,00
         assert!(err.contains("lançamento"), "mensagem informativa: {err}");
     }
 
+    // ---- 016: período, poupança, posições e cobertura ----
+
+    // T007
+    #[test]
+    fn captures_period_and_builds_positions_and_coverage() {
+        use crate::domain::account_position::Product;
+        use chrono::NaiveDate;
+
+        let e = ExtratoBanestes::parse(&main_fixture()).unwrap();
+        assert_eq!(
+            e.periodo,
+            Some((
+                NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),
+                NaiveDate::from_ymd_opt(2026, 7, 25).unwrap()
+            ))
+        );
+
+        let p = parse_banestes_text(&main_fixture()).unwrap();
+        assert_eq!(p.coverage, e.periodo);
+        assert_eq!(p.positions.len(), 1, "só conta corrente no extrato simples");
+        assert_eq!(p.positions[0].product, Product::Corrente);
+        assert_eq!(p.positions[0].balance, dec("231.30"));
+        assert_eq!(p.positions[0].as_of, NaiveDate::from_ymd_opt(2026, 7, 25).unwrap());
+        assert_eq!(p.positions[0].account, "12/1234567-8");
+    }
+
+    // T007 — consolidated statement also yields the savings position.
+    #[test]
+    fn consolidated_statement_yields_savings_position() {
+        use crate::domain::account_position::Product;
+
+        let e = ExtratoBanestes::parse(&fixture("banestes_extrato_consolidado.txt")).unwrap();
+        assert_eq!(e.saldo_poupanca, Some(dec("5000.00")));
+
+        let p = parse_banestes_text(&fixture("banestes_extrato_consolidado.txt")).unwrap();
+        assert_eq!(p.positions.len(), 2);
+        let poupanca = p.positions.iter().find(|x| x.product == Product::Poupanca).unwrap();
+        assert_eq!(poupanca.balance, dec("5000.00"));
+        let corrente = p.positions.iter().find(|x| x.product == Product::Corrente).unwrap();
+        assert_eq!(corrente.balance, dec("231.30"), "posição da conta usa Saldo Conta, não o Total");
+    }
+
+    // T007 — no printed period ⇒ no honest as_of ⇒ no position, no coverage.
+    #[test]
+    fn no_period_means_no_position_and_no_coverage() {
+        let text = main_fixture().replace("Período: 01/07/2026 à 25/07/2026", "");
+        let p = parse_banestes_text(&text).unwrap();
+        assert!(p.positions.is_empty());
+        assert!(p.coverage.is_none());
+    }
+
     // ---- ExtratoBanestes: saldos tipados e conferência explícita ----
+
+    // T021 (016) — segment reconciliation
+    #[test]
+    fn segmentos_fecham_nas_fixtures_integras() {
+        for name in ["banestes_extrato.txt", "banestes_extrato_consolidado.txt"] {
+            let e = ExtratoBanestes::parse(&fixture(name)).unwrap();
+            assert!(!e.segmentos.is_empty(), "{name} imprime saldos parciais");
+            let c = e.conferir();
+            assert_eq!(c.segmentos, Checagem::Fechou, "{name}");
+            assert!(c.exigir().is_ok(), "{name}");
+        }
+    }
+
+    /// The check that justifies this feature: two errors that cancel out (−100 on day
+    /// 06, +100 on day 15) keep the period total, the balances and the declared
+    /// entradas/saídas all closing — only the per-day chain sees it.
+    #[test]
+    fn segmento_pega_erro_que_se_autocancela() {
+        let e = ExtratoBanestes::parse(&fixture("banestes_extrato_autocancela.txt")).unwrap();
+        let c = e.conferir();
+        assert_eq!(c.saldos, Checagem::Fechou, "o total continua fechando");
+        assert_eq!(c.entradas_saidas, Checagem::Fechou, "as colunas também");
+        assert_eq!(c.segmentos, Checagem::Divergiu { diferenca: dec("100.00") });
+        assert_eq!(c.segmento_dia, Some(6), "primeiro dia divergente");
+
+        let err = c.exigir().unwrap_err();
+        assert!(err.contains("no dia 06") && err.contains("100,00") && err.contains("Nada foi importado"), "{err}");
+        assert!(parse_banestes_text(&fixture("banestes_extrato_autocancela.txt")).is_err());
+    }
+
+    /// A statement without intermediate balances is still importable — this check is
+    /// a bonus, unlike the two total ones.
+    #[test]
+    fn sem_saldos_parciais_a_conferencia_de_segmento_e_tolerada() {
+        let text = main_fixture()
+            .lines()
+            .filter(|l| {
+                let n = super::norm(l);
+                !(n.starts_with("SALDO") || n.contains("JUL/26 SALDO")) || n.starts_with("SALDO ANTERIOR") || n.starts_with("SALDO CONTA") || n.starts_with("SALDO TOTAL")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let e = ExtratoBanestes::parse(&text).unwrap();
+        assert!(e.segmentos.is_empty());
+        let c = e.conferir();
+        assert_eq!(c.segmentos, Checagem::SemDados { faltou: "os saldos parciais" });
+        assert!(c.exigir().is_ok(), "SemDados de segmento não bloqueia: {:?}", c.exigir());
+    }
 
     #[test]
     fn expoe_saldos_e_totais_declarados() {

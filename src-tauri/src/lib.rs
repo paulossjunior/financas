@@ -15,7 +15,7 @@ use application::store::shared_store_with;
 use infrastructure::db::{new_shared_db, Database};
 use commands::{
     backup::{backup_database, restore_database},
-    bank::{clear_bank_entries, import_bank_statement, list_bank_entries, preview_bank_statement, remove_bank_entry, save_bank_statement, set_bank_entry_category},
+    bank::{clear_bank_entries, coverage_summary, import_bank_statement, list_account_positions, list_bank_entries, preview_bank_statement, remove_bank_entry, save_bank_statement, set_bank_entry_category},
     categories::{add_category_keyword, override_transaction_category, recategorize_invoices_cmd, remove_transaction_override},
     config::{get_config, save_config},
     dashboard::{get_dashboard_cmd, get_year_summary_cmd, list_invoices, remove_invoice},
@@ -134,6 +134,8 @@ pub fn run() {
             save_bank_statement,
             set_bank_entry_category,
             list_bank_entries,
+            list_account_positions,
+            coverage_summary,
             remove_bank_entry,
             clear_bank_entries,
             fetch_ipca,

@@ -86,6 +86,9 @@ impl BankEntry {
 ///
 /// `bank` identifies which reader produced it ("BTG", "Banestes"), so the bank
 /// travels with the data instead of being guessed again at each call site.
+/// `positions`/`coverage` (feature 016) carry the stock data the statement prints —
+/// final balances and the covered period — when the file provides them; the
+/// `source_file` of each position is stamped by the layer that knows the filename.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ParsedStatement {
     #[serde(default)]
@@ -93,6 +96,14 @@ pub struct ParsedStatement {
     pub holder: String,
     pub account: String,
     pub entries: Vec<RawEntry>,
+    #[serde(default)]
+    pub positions: Vec<crate::domain::account_position::AccountPosition>,
+    #[serde(default)]
+    pub coverage: Option<(chrono::NaiveDate, chrono::NaiveDate)>,
+    /// Opening balance the statement printed ("Saldo Anterior"), used to check the
+    /// chain against the previously imported period (016). `None` = not printed.
+    #[serde(default)]
+    pub previous_balance: Option<Decimal>,
 }
 
 /// Uppercase, strip accents, collapse whitespace — for robust name/keyword matching.
@@ -176,9 +187,22 @@ pub fn parse_statement_rows(rows: &[Vec<String>]) -> ParsedStatement {
         return out;
     };
 
+    // Last printed "Saldo Diário" → a best-effort account position (016). The line
+    // never becomes an entry; the grid prints it with a date and the day's balance.
+    let mut last_daily: Option<(chrono::NaiveDate, Decimal)> = None;
+
     for r in rows.iter().skip(header_idx + 1) {
         let desc = cell(r, c_desc);
         if norm(&desc) == "SALDO DIARIO" {
+            if let (Some((date, _)), Some(balance)) =
+                (parse_date(&cell(r, c_date)), parse_amount(&cell(r, c_val)))
+            {
+                if let Ok(d) = date.parse::<chrono::NaiveDate>() {
+                    if last_daily.map_or(true, |(prev, _)| d > prev) {
+                        last_daily = Some((d, balance));
+                    }
+                }
+            }
             continue;
         }
         let date_raw = cell(r, c_date);
@@ -196,6 +220,12 @@ pub fn parse_statement_rows(rows: &[Vec<String>]) -> ParsedStatement {
             description: desc,
             amount,
         });
+    }
+    if let Some((as_of, balance)) = last_daily {
+        use crate::domain::account_position::{AccountPosition, Product};
+        // Bank is stamped by the reader after this returns; rebuilt there with it.
+        out.positions =
+            vec![AccountPosition::new("", &out.account, Product::Corrente, balance, as_of, "")];
     }
     out
 }
@@ -382,6 +412,26 @@ mod tests {
         let b = entry_id(&p.account, &p.entries[1]);
         assert_eq!(a, b);
         assert_ne!(a, entry_id(&p.account, &p.entries[2]));
+    }
+
+    // T009 (016) — the last "Saldo Diário" line becomes a best-effort position.
+    #[test]
+    fn btg_last_daily_balance_becomes_a_position() {
+        use crate::domain::account_position::Product;
+        let p = parse_statement_rows(&rows());
+        assert_eq!(p.positions.len(), 1);
+        assert_eq!(p.positions[0].product, Product::Corrente);
+        assert_eq!(p.positions[0].balance, Decimal::from_str("5160").unwrap());
+        assert_eq!(
+            p.positions[0].as_of,
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
+        );
+        assert!(p.coverage.is_none(), "grid BTG não imprime período — cobertura nunca");
+
+        // A grid without the line yields no position (nothing invented).
+        let no_daily: Vec<Vec<String>> =
+            rows().into_iter().filter(|r| !r.iter().any(|c| norm(c) == "SALDO DIARIO")).collect();
+        assert!(parse_statement_rows(&no_daily).positions.is_empty());
     }
 
     /// Regression lock: the id key must stay byte-identical, or every bank entry
