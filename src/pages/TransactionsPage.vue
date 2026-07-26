@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // Transactions page (Despesas & Receitas) — unified movements list assembled from every source (card, fixed, avulso, payslip, extrato).
 import { ref, computed, watch, onMounted } from "vue";
-import type { Transaction, ManualEntry, BankEntry, Payslip } from "@/types/api.types";
+import type { Transaction, ManualEntry, BankEntry, Payslip, InvoiceInfo } from "@/types/api.types";
 import {
   getAllTransactions,
   listManualEntries,
   listBankEntries,
   listPayslips,
+  listInvoices,
 } from "@/services/tauri.service";
 import { useSettingsStore } from "@/stores/settings.store";
 
@@ -23,6 +24,7 @@ interface Movement {
   installment: string; // "(3/6)" or ""
   category: string;
   origin: Origin;
+  bank: string; // "" when the source has no bank (avulso, fixo, folha, contracheque)
   tipo: Tipo;
   amount: number; // absolute magnitude (always positive)
   hasOverride: boolean;
@@ -44,6 +46,12 @@ const cardTx = ref<Transaction[]>([]);
 const manual = ref<ManualEntry[]>([]);
 const bank = ref<BankEntry[]>([]);
 const payslips = ref<Payslip[]>([]);
+const invoices = ref<InvoiceInfo[]>([]);
+
+// Card transactions carry only invoice_id; the invoice knows its bank.
+const invoiceBank = computed<Map<string, string>>(
+  () => new Map(invoices.value.map((i) => [i.id, i.bank]))
+);
 
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -104,6 +112,7 @@ async function load(): Promise<void> {
     try { manual.value = await listManualEntries(); } catch { manual.value = []; }
     try { bank.value = await listBankEntries(); } catch { bank.value = []; }
     try { payslips.value = await listPayslips(); } catch { payslips.value = []; }
+    try { invoices.value = await listInvoices(); } catch { invoices.value = []; }
   } catch (e) {
     error.value = String(e instanceof Error ? e.message : e);
   } finally {
@@ -133,6 +142,7 @@ const movements = computed<Movement[]>(() => {
       installment: t.installment ? `(${t.installment.current}/${t.installment.total})` : "",
       category: t.category,
       origin: "cartao",
+      bank: invoiceBank.value.get(t.invoice_id) ?? "",
       tipo: isRev ? "receita" : "despesa",
       amount: amt,
       hasOverride: !!overrides[t.id],
@@ -153,6 +163,7 @@ const movements = computed<Movement[]>(() => {
       installment: "",
       category: e.category,
       origin: isIncome ? "avulso" : e.recurring ? "fixo" : "avulso",
+      bank: "",
       tipo: isIncome ? "receita" : "despesa",
       amount: amt,
       hasOverride: false,
@@ -174,6 +185,7 @@ const movements = computed<Movement[]>(() => {
       installment: "",
       category: b.category,
       origin: "extrato",
+      bank: b.bank,
       tipo: isIncome ? "receita" : "despesa",
       amount: amt,
       hasOverride: false,
@@ -197,6 +209,7 @@ const movements = computed<Movement[]>(() => {
           installment: "",
           category: it.class === "bonus" ? "Renda Extra" : "Salário",
           origin: "contracheque",
+          bank: "",
           tipo: "receita",
           amount: amt,
           hasOverride: false,
@@ -211,6 +224,7 @@ const movements = computed<Movement[]>(() => {
           installment: "",
           category: dedCat(it.description),
           origin: "folha",
+          bank: "",
           tipo: "despesa",
           amount: amt,
           hasOverride: false,
@@ -416,13 +430,14 @@ function pluralSaidas(n: number): string { return `${n} ${n === 1 ? "saída" : "
                   <th>Descrição</th>
                   <th>Categoria</th>
                   <th>Origem</th>
+                  <th>Banco</th>
                   <th class="right">Valor</th>
                 </tr>
               </thead>
               <tbody>
                 <template v-for="g in mistoGroups" :key="g.month">
                   <tr class="grp">
-                    <td colspan="6">
+                    <td colspan="7">
                       <div class="grp-inner">
                         <span class="grp-name">{{ g.label }}</span>
                         <span class="grp-tot">
@@ -445,6 +460,10 @@ function pluralSaidas(n: number): string { return `${n} ${n === 1 ? "saída" : "
                     </td>
                     <td>
                       <span class="org" :class="originCls(m.origin)"><span class="odot"></span>{{ originLabel(m.origin) }}</span>
+                    </td>
+                    <td>
+                      <span v-if="m.bank" class="bank-chip">{{ m.bank }}</span>
+                      <span v-else class="no-bank" title="Movimento sem conta bancária (avulso, folha ou contracheque)">—</span>
                     </td>
                     <td class="right">
                       <span class="val" :class="m.tipo">{{ m.tipo === "receita" ? "+ " : "− " }}{{ fmtBRL(m.amount) }}</span>
@@ -479,6 +498,10 @@ function pluralSaidas(n: number): string { return `${n} ${n === 1 ? "saída" : "
                         <td class="desc">{{ m.description }}<span v-if="m.installment" class="inst"> {{ m.installment }}</span></td>
                         <td><span class="cat-chip">{{ m.category }}</span></td>
                         <td><span class="org" :class="originCls(m.origin)"><span class="odot"></span>{{ originLabel(m.origin) }}</span></td>
+                        <td>
+                          <span v-if="m.bank" class="bank-chip">{{ m.bank }}</span>
+                          <span v-else class="no-bank" title="Movimento sem conta bancária (avulso, folha ou contracheque)">—</span>
+                        </td>
                         <td class="right"><span class="val receita">+ {{ fmtBRL(m.amount) }}</span></td>
                       </tr>
                     </tbody>
@@ -506,6 +529,10 @@ function pluralSaidas(n: number): string { return `${n} ${n === 1 ? "saída" : "
                           </span>
                         </td>
                         <td><span class="org" :class="originCls(m.origin)"><span class="odot"></span>{{ originLabel(m.origin) }}</span></td>
+                        <td>
+                          <span v-if="m.bank" class="bank-chip">{{ m.bank }}</span>
+                          <span v-else class="no-bank" title="Movimento sem conta bancária (avulso, folha ou contracheque)">—</span>
+                        </td>
                         <td class="right"><span class="val despesa">− {{ fmtBRL(m.amount) }}</span></td>
                       </tr>
                     </tbody>
@@ -618,7 +645,7 @@ select.fld:focus { border-color: var(--clr-accent); }
 .list-head .spacer { margin-left: auto; }
 
 .table-scroll { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; min-width: 720px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; min-width: 780px; }
 thead th {
   text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--clr-stroke);
   color: var(--clr-text-muted); font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
@@ -656,6 +683,15 @@ tr.mov.receita:hover td { background: color-mix(in srgb, var(--clr-positive) 8%,
 }
 .cat-chip.ovr { outline: 1px dashed color-mix(in srgb, var(--clr-accent) 55%, transparent); }
 .cat-chip .ov-dot { font-size: 0.6rem; }
+
+/* banco badge — same look as the Extrato page's bank tag (consistency, H4) */
+.bank-chip {
+  display: inline-flex; align-items: center; padding: 0.12rem 0.55rem;
+  background: var(--clr-surface-alt, #eef1f0); color: var(--clr-text-secondary);
+  border: 1px solid var(--clr-stroke); border-radius: 100px;
+  font-size: 0.6875rem; font-weight: 600; white-space: nowrap; letter-spacing: 0.02em;
+}
+.no-bank { color: var(--clr-text-muted); }
 
 /* origem badge */
 .org { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.6875rem; font-weight: 600; color: var(--clr-text-secondary); white-space: nowrap; }

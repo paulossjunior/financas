@@ -11,9 +11,13 @@ src-tauri/target/
 # Tauri
 src-tauri/gen/
 
-# User data
+# User data — real documents live in ~/Documents/casa/, never here (see CLAUDE.md)
 faturas/
+extratos/
+contracheque/
 tests/fixtures/*.xlsx
+tests/fixtures/*.xls
+tests/fixtures/*.pdf
 # ...but keep the synthetic test fixture (no real data) so CI can run the parser tests
 !tests/fixtures/sample_fatura.xlsx
 

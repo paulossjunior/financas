@@ -1,12 +1,20 @@
 //! Application use-case (feature 013): scan a single folder and auto-import every
-//! recognizable BTG invoice (`.xlsx`) and bank statement (`.xls`/`.xlsx`) found in it.
+//! recognizable BTG invoice (`.xlsx`), BTG statement (`.xls`/`.xlsx`) and Banestes
+//! statement (`.pdf`) found in it.
 //!
 //! Type detection reuses the existing parsers: an `.xls` is treated as a statement
 //! (invoices are always `.xlsx`); an `.xlsx` is tried as an invoice first and, if the
-//! invoice parser rejects it, as a statement. A file that fits neither — or a
-//! password-protected invoice with no saved password — is skipped and reported in
-//! `ignored`, never aborting the scan. Dedup is inherited from the underlying flows
-//! (invoice id from filename; bank-entry id UNIQUE), so re-scanning is idempotent.
+//! invoice parser rejects it, as a statement; a `.pdf` is imported only when it is
+//! recognizably a Banestes statement, so a payslip in the same folder is left alone
+//! (feature 014).
+//!
+//! A **spreadsheet** that fits neither parser — or a password-protected invoice with no
+//! saved password — is reported in `ignored`: the user put it here expecting it to be
+//! imported, so silence would hide a real failure. A **PDF that is not a statement** is
+//! skipped silently instead; payslips legitimately live in this folder and reporting each
+//! one at every app start would look like an error. Nothing ever aborts the scan. Dedup is
+//! inherited from the underlying flows (invoice id from filename; bank-entry id UNIQUE),
+//! so re-scanning is idempotent.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -17,8 +25,8 @@ use crate::application::import_invoice::{import_invoice, ImportError};
 use crate::application::store::SharedStore;
 use crate::domain::bank_statement::BankEntry;
 use crate::domain::{classify_statement, AppConfig, Categorizer};
-use crate::infrastructure::btg_statement::read_statement;
 use crate::infrastructure::db::{persist, SharedDb};
+use crate::infrastructure::statement_reader::statement_reader_for;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -135,7 +143,33 @@ pub fn import_from_folder(
                     reason: "NOT_RECOGNIZED".to_string(),
                 }),
             },
-            _ => {} // ignore non-spreadsheet files silently
+            // A PDF here is a bank statement or someone else's document — a payslip,
+            // most often, which this folder is not responsible for. The reader
+            // strategy's `recognizes` sniff decides; only a recognized statement is
+            // imported, never guessed at (a payslip parsed as a statement would
+            // invent movements). A PDF that no strategy recognizes is skipped
+            // **silently**: it is not a problem to report, and listing every payslip
+            // as "ignorado" would read as an error at each app start. Once a PDF *is*
+            // recognized, a failure to import it is reported.
+            Some("pdf") => {
+                let recognized = path
+                    .to_str()
+                    .and_then(statement_reader_for)
+                    .is_some_and(|r| r.recognizes(path.to_str().unwrap_or_default()));
+                if recognized {
+                    match try_import_extrato(&path, db, cfg, &payslip_months) {
+                        Ok(n) => {
+                            summary.extratos += 1;
+                            summary.entries += n;
+                        }
+                        Err(e) => summary.ignored.push(IgnoredFile {
+                            name,
+                            reason: format!("ERROR: {e}"),
+                        }),
+                    }
+                }
+            }
+            _ => {} // ignore other files silently
         }
     }
 
@@ -180,6 +214,7 @@ fn try_import_fatura(
     }
 }
 
+/// Read (via the strategy registry), classify and persist one statement file.
 fn try_import_extrato(
     path: &Path,
     db: &SharedDb,
@@ -187,21 +222,33 @@ fn try_import_extrato(
     payslip_months: &HashSet<String>,
 ) -> Result<usize, String> {
     let path_str = path.to_str().ok_or("caminho inválido")?;
-    let parsed = read_statement(path_str)?;
+    let reader = statement_reader_for(path_str).ok_or("formato sem leitor de extrato")?;
+    let parsed = reader.read(path_str)?;
+    save_entries(db, &classify_for_persist(&parsed, cfg, payslip_months))
+}
+
+/// Persist bank entries (dedup is the id UNIQUE constraint) and report how many.
+fn save_entries(db: &SharedDb, entries: &[BankEntry]) -> Result<usize, String> {
+    db.lock().map_err(|e| e.to_string())?.save_bank_entries(entries)?;
+    Ok(entries.len())
+}
+
+fn classify_for_persist(
+    parsed: &crate::domain::ParsedStatement,
+    cfg: &AppConfig,
+    payslip_months: &HashSet<String>,
+) -> Vec<BankEntry> {
     let rules = cfg.category_rules.clone();
     let cz = if rules.is_empty() {
         Categorizer::with_defaults()
     } else {
         Categorizer::new(rules)
     };
-    let entries: Vec<BankEntry> = classify_statement(&parsed, &cz, payslip_months)
+    classify_statement(parsed, &cz, payslip_months)
         .iter()
         .filter(|c| c.included)
-        .map(|c| BankEntry::from_classified(c, "BTG", &parsed.account))
-        .collect();
-    let n = entries.len();
-    db.lock().map_err(|e| e.to_string())?.save_bank_entries(&entries)?;
-    Ok(n)
+        .map(|c| BankEntry::from_classified(c, &parsed.bank, &parsed.account))
+        .collect()
 }
 
 #[cfg(test)]
@@ -215,6 +262,100 @@ mod tests {
             .parent()
             .unwrap()
             .join("tests/fixtures/sample_fatura.xlsx")
+    }
+
+    fn extrato_text(name: &str) -> String {
+        let p = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("tests/fixtures")
+            .join(name);
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("fixture {p:?}: {e}"))
+    }
+
+    /// Test seam: the statement branch from already-extracted text, so the folder
+    /// behaviour is testable without a real (personal-data) PDF in the repository.
+    /// Production goes through the reader strategy instead (`try_import_extrato`);
+    /// both funnel into the same `classify_for_persist`.
+    fn import_extrato_text(
+        text: &str,
+        cfg: &AppConfig,
+        payslip_months: &HashSet<String>,
+    ) -> Result<Vec<BankEntry>, String> {
+        let parsed = crate::domain::parse_banestes_text(text)?;
+        Ok(classify_for_persist(&parsed, cfg, payslip_months))
+    }
+
+    // T039 — the PDF branch, exercised from the extracted text (no real statement
+    // PDF in the repository; the pdf_extract call itself is the untested shell).
+    #[test]
+    fn imports_banestes_statement_text_from_folder() {
+        let entries = import_extrato_text(
+            &extrato_text("banestes_extrato.txt"),
+            &AppConfig::default(),
+            &HashSet::new(),
+        )
+        .unwrap();
+        assert_eq!(entries.len(), 9);
+        assert!(entries.iter().all(|e| e.bank == "Banestes"));
+        assert!(entries.iter().all(|e| e.account == "12/1234567-8"));
+    }
+
+    // T040
+    #[test]
+    fn payslip_pdf_is_not_treated_as_a_statement() {
+        let payslip = "Comprovante de Rendimentos\nSouGov.br\nJUL 2026\nLíquido a Receber 10.345,67";
+        assert!(!crate::domain::is_banestes_statement(payslip));
+        assert!(import_extrato_text(payslip, &AppConfig::default(), &HashSet::new()).is_err());
+    }
+
+    // T040
+    #[test]
+    fn statement_that_does_not_reconcile_is_reported_not_imported() {
+        let err = import_extrato_text(
+            &extrato_text("banestes_extrato_quebrado.txt"),
+            &AppConfig::default(),
+            &HashSet::new(),
+        )
+        .unwrap_err();
+        assert!(err.contains("não fech"), "{err}");
+    }
+
+    // T041 — re-importing the same statement text must not add rows.
+    #[test]
+    fn rescanning_a_statement_does_not_duplicate() {
+        let db = new_shared_db(Database::open_in_memory().unwrap());
+        let cfg = AppConfig::default();
+        for _ in 0..2 {
+            let entries =
+                import_extrato_text(&extrato_text("banestes_extrato.txt"), &cfg, &HashSet::new())
+                    .unwrap();
+            db.lock().unwrap().save_bank_entries(&entries).unwrap();
+        }
+        assert_eq!(db.lock().unwrap().load_bank_entries().unwrap().len(), 9);
+    }
+
+    // T035 — both banks coexist in the same table without id collision.
+    #[test]
+    fn entries_from_both_banks_coexist() {
+        let db = new_shared_db(Database::open_in_memory().unwrap());
+        let cfg = AppConfig::default();
+        let banestes =
+            import_extrato_text(&extrato_text("banestes_extrato.txt"), &cfg, &HashSet::new()).unwrap();
+        db.lock().unwrap().save_bank_entries(&banestes).unwrap();
+
+        let mut btg = banestes.clone();
+        for e in &mut btg {
+            e.bank = "BTG".into();
+            e.account = "286969-2".into();
+            e.id = format!("btg-{}", e.id);
+        }
+        db.lock().unwrap().save_bank_entries(&btg).unwrap();
+
+        let all = db.lock().unwrap().load_bank_entries().unwrap();
+        assert_eq!(all.len(), 18);
+        assert_eq!(all.iter().filter(|e| e.bank == "Banestes").count(), 9);
+        assert_eq!(all.iter().filter(|e| e.bank == "BTG").count(), 9);
     }
 
     #[test]
@@ -244,6 +385,24 @@ mod tests {
         assert_eq!(summary.faturas, 1, "the valid invoice must still import");
         assert!(summary.ignored.iter().any(|f| f.name == "junk.xlsx"));
         assert!(summary.ignored.iter().any(|f| f.name == "garbage.xls"));
+    }
+
+    // A PDF that is not a statement (a payslip, or any unreadable one) must leave no
+    // trace in the summary: this folder is scanned at every app start, and reporting the
+    // user's payslips as "ignorado" every time would read as a recurring error.
+    #[test]
+    fn pdf_that_is_not_a_statement_is_skipped_silently() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::copy(fatura_fixture(), dir.path().join("ok.xlsx")).unwrap();
+        std::fs::write(dir.path().join("contracheque_7_2026.pdf"), b"%PDF-1.4 not a statement").unwrap();
+
+        let db = new_shared_db(Database::open_in_memory().unwrap());
+        let store = new_shared_store();
+        let summary = import_from_folder(dir.path(), &db, &store, &AppConfig::default(), None);
+
+        assert_eq!(summary.faturas, 1, "the valid invoice must still import");
+        assert_eq!(summary.extratos, 0);
+        assert!(summary.ignored.is_empty(), "ignorados: {:?}", summary.ignored);
     }
 
     #[test]
