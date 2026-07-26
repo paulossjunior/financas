@@ -12,6 +12,7 @@ use crate::application::{
 };
 use crate::domain::AppConfig;
 use crate::infrastructure::db::{persist, persist_config, SharedDb};
+use crate::infrastructure::invoice_reader::invoice_reader_for;
 use crate::infrastructure::secrets;
 
 #[tauri::command]
@@ -25,21 +26,32 @@ pub async fn import_invoices(
 ) -> Result<Vec<ImportResult>, String> {
     let mut results = vec![];
     let cfg = config.lock().map_err(|e| e.to_string())?.clone();
-
-    // When the caller sends no password, fall back to the one saved in the keychain,
-    // so remembered passwords import silently without a prompt.
-    let saved = if password.is_none() {
-        secrets::get_password()
-    } else {
-        None
-    };
-    let effective = password.as_deref().or(saved.as_deref());
+    // Which banks' invoices were imported with the explicit password — `remember`
+    // must save the credential under the right bank's keychain entry.
+    let mut banks_imported: Vec<&'static str> = vec![];
 
     for path_str in paths {
         let path = PathBuf::from(&path_str);
+        // The bank owns the password: each file resolves its own credential
+        // (BTG .xlsx vs Santander .pdf), falling back to that bank's saved one so
+        // remembered passwords import silently without a prompt.
+        let bank = invoice_reader_for(&path).map(|r| r.bank());
+        let saved = match (password.is_none(), bank) {
+            (true, Some(b)) => secrets::get_password_for(b),
+            _ => None,
+        };
+        let effective = password.as_deref().or(saved.as_deref());
+
         let mut store_lock = store.lock().map_err(|e| e.to_string())?;
         match import_invoice(&path, &mut store_lock, &cfg, effective) {
-            Ok(result) => results.push(result),
+            Ok(result) => {
+                results.push(result);
+                if let Some(b) = bank {
+                    if !banks_imported.contains(&b) {
+                        banks_imported.push(b);
+                    }
+                }
+            }
             Err(e) => return Err(e.to_string()),
         }
     }
@@ -47,11 +59,14 @@ pub async fn import_invoices(
     let snapshot = store.lock().map_err(|e| e.to_string())?.list_owned();
     persist(&db, &snapshot);
 
-    // Only persist an explicitly-supplied password that just decrypted successfully.
+    // Only persist an explicitly-supplied password that just decrypted successfully,
+    // under the keychain entry of each bank it actually worked for.
     if remember.unwrap_or(false) {
         if let Some(p) = password.as_deref() {
-            if let Err(e) = secrets::save_password(p) {
-                eprintln!("[secrets] falha ao salvar senha: {e}");
+            for bank in banks_imported {
+                if let Err(e) = secrets::save_password_for(bank, p) {
+                    eprintln!("[secrets] falha ao salvar senha ({bank}): {e}");
+                }
             }
         }
     }

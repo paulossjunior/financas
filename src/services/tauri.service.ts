@@ -78,19 +78,19 @@ export async function importInvoices(
   }
 }
 
-/** Whether an invoice password is saved in the OS keychain. */
-export async function hasSavedPassword(): Promise<boolean> {
+/** Whether an invoice password is saved in the OS keychain for a bank (default BTG). */
+export async function hasSavedPassword(bank = "BTG"): Promise<boolean> {
   try {
-    return await invoke<boolean>("has_saved_password");
+    return await invoke<boolean>("has_saved_password", { bank });
   } catch {
     return false;
   }
 }
 
-/** Forget the saved invoice password. */
-export async function clearSavedPassword(): Promise<void> {
+/** Forget the saved invoice password of a bank (default BTG). */
+export async function clearSavedPassword(bank = "BTG"): Promise<void> {
   try {
-    await invoke<void>("clear_saved_password");
+    await invoke<void>("clear_saved_password", { bank });
   } catch (e) {
     throw new Error(mapError(String(e)));
   }

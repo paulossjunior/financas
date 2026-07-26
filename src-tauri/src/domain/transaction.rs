@@ -6,6 +6,14 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// A non-fatal problem found while mapping one invoice row/line to a transaction —
+/// surfaced to the user after import instead of silently dropping data.
+#[derive(Debug)]
+pub struct ParseWarning {
+    pub row: u32,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstallmentInfo {
     pub current: u8,

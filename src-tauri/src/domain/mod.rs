@@ -3,6 +3,7 @@
 
 pub mod banestes_statement;
 pub mod bank_statement;
+pub mod santander_invoice;
 pub mod category;
 pub mod categorizer;
 pub mod dashboard;

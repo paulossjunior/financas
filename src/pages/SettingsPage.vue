@@ -14,7 +14,9 @@ import type { FolderImportSummary } from "@/types/api.types";
 
 const store = useSettingsStore();
 
-const pwSaved = ref(false);
+// One saved credential per bank ("BTG" .xlsx password, "Santander" PDF password).
+const PW_BANKS = ["BTG", "Santander"] as const;
+const pwSaved = ref<Record<string, boolean>>({ BTG: false, Santander: false });
 const pwBusy = ref(false);
 
 // Backup & restore (feature 012)
@@ -36,18 +38,20 @@ function summaryText(s: FolderImportSummary): string {
 
 onMounted(async () => {
   await store.loadConfig();
-  pwSaved.value = await hasSavedPassword();
+  for (const bank of PW_BANKS) {
+    pwSaved.value[bank] = await hasSavedPassword(bank);
+  }
 });
 
 async function handleSave(): Promise<void> {
   await store.saveCategories();
 }
 
-async function forgetPassword(): Promise<void> {
+async function forgetPassword(bank: string): Promise<void> {
   pwBusy.value = true;
   try {
-    await clearSavedPassword();
-    pwSaved.value = false;
+    await clearSavedPassword(bank);
+    pwSaved.value[bank] = false;
   } finally {
     pwBusy.value = false;
   }
@@ -139,11 +143,12 @@ async function doRestore(): Promise<void> {
         <div class="field">
           <label>Pasta de importação</label>
           <p class="field-hint">
-            Escolha uma pasta com suas faturas (.xlsx) e extratos (.xls do BTG, .pdf do
-            Banestes). Ao definir, o app importa o que já está lá; e toda vez que abrir, importa
-            automaticamente os arquivos novos dessa pasta — identificando sozinho o que é fatura
-            e o que é extrato, sem duplicar o que já foi importado. Contracheques em PDF não são
-            importados por aqui.
+            Escolha uma pasta com suas faturas (.xlsx do BTG, .pdf do Santander) e extratos
+            (.xls do BTG, .pdf do Banestes). Ao definir, o app importa o que já está lá; e toda
+            vez que abrir, importa automaticamente os arquivos novos — identificando sozinho o
+            que é cada coisa, sem duplicar o que já foi importado. Faturas do Santander precisam
+            da senha salva (importe uma manualmente e marque "lembrar"); contracheques em PDF
+            não são importados por aqui.
           </p>
           <div class="db-row">
             <button class="db-btn" :disabled="importBusy" @click="chooseImportFolder">
@@ -174,17 +179,19 @@ async function doRestore(): Promise<void> {
         <div class="field">
           <label>Senha das faturas</label>
           <p class="field-hint">
-            A senha de faturas protegidas fica guardada no Keychain do sistema (cifrada), nunca no banco de dados.
+            A senha de faturas protegidas (planilha do BTG, PDF do Santander) fica guardada no
+            Keychain do sistema (cifrada), nunca no banco de dados — uma senha por banco.
           </p>
-          <div class="pw-row">
-            <span class="pw-state" :class="pwSaved ? 'on' : 'off'">
-              {{ pwSaved ? "✓ Senha salva neste dispositivo" : "Nenhuma senha salva" }}
+          <div v-for="bank in PW_BANKS" :key="bank" class="pw-row">
+            <span class="pw-bank">{{ bank }}</span>
+            <span class="pw-state" :class="pwSaved[bank] ? 'on' : 'off'">
+              {{ pwSaved[bank] ? "✓ Senha salva neste dispositivo" : "Nenhuma senha salva" }}
             </span>
             <button
-              v-if="pwSaved"
+              v-if="pwSaved[bank]"
               class="forget-btn"
               :disabled="pwBusy"
-              @click="forgetPassword"
+              @click="forgetPassword(bank)"
             >
               {{ pwBusy ? "Removendo…" : "Esquecer senha" }}
             </button>
@@ -281,6 +288,12 @@ label { font-size: 0.875rem; font-weight: 600; color: var(--clr-text-primary); }
 .divider { height: 1px; background: var(--clr-stroke); margin: 1.25rem 0; }
 
 .pw-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.pw-row + .pw-row { margin-top: 0.4rem; }
+.pw-bank {
+  font-size: 0.6875rem; font-weight: 600; color: var(--clr-text-secondary);
+  background: var(--clr-surface-alt, #eef1f0); border: 1px solid var(--clr-stroke);
+  border-radius: 100px; padding: 0.12rem 0.55rem; min-width: 78px; text-align: center;
+}
 .pw-state { font-size: 0.8125rem; font-weight: 500; }
 .pw-state.on { color: var(--clr-positive, #107c10); }
 .pw-state.off { color: var(--clr-text-muted); }

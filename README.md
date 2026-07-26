@@ -13,7 +13,7 @@ Aplicativo desktop de finanças pessoais — importa faturas do cartão **BTG** 
 ## O que faz
 
 **Importação** (aba **📥 Importações**: Faturas · Extrato · Contracheque)
-- Faturas **BTG** em `.xlsx` (inclusive **cifradas** — senha guardada no keychain do SO).
+- Faturas de cartão — **BTG** (`.xlsx`, inclusive cifradas) e **Santander** (`.pdf` cifrado), com o banco reconhecido pelo próprio arquivo e **uma senha por banco** guardada no keychain do SO. Na fatura Santander, a soma lida é conferida contra o "Resumo da Fatura" impresso no PDF (IOF de compra internacional vira lançamento próprio; pagamentos de fatura são excluídos; cashback abate o mês) — se não fechar, nada é importado.
 - **Contracheque SouGov.br** (PDF): extrai e classifica tudo — salário × bônus (inclui "Cargo de Direção – CD" como bônus temporário), descontos (IR, GEAP, FUNPRESP, PSS), detecção de "wash" (adiantamentos que se anulam) e líquido por item. Importa vários de uma vez.
 - **Extrato bancário** — **Banestes** (.pdf) e **BTG** (.xls/.xlsx), com o banco reconhecido pelo próprio arquivo: lê entradas/saídas, **categoriza** (regras do app + fallback do banco quando houver), **exclui** o que já é contado (fatura do cartão, salário com contracheque, transferências internas), com **prévia** e **dedup**. Entra no painel como avulso/renda. No Banestes, os valores lidos são conferidos contra as entradas/saídas e os saldos impressos no extrato — se não fechar, nada é importado.
 
