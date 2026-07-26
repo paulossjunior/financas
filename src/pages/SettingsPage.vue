@@ -139,10 +139,11 @@ async function doRestore(): Promise<void> {
         <div class="field">
           <label>Pasta de importação</label>
           <p class="field-hint">
-            Escolha uma pasta com suas faturas (.xlsx) e extratos (.xls). Ao definir, o app
-            importa o que já está lá; e toda vez que abrir, importa automaticamente os arquivos
-            novos dessa pasta — identificando sozinho o que é fatura e o que é extrato, sem
-            duplicar o que já foi importado.
+            Escolha uma pasta com suas faturas (.xlsx) e extratos (.xls do BTG, .pdf do
+            Banestes). Ao definir, o app importa o que já está lá; e toda vez que abrir, importa
+            automaticamente os arquivos novos dessa pasta — identificando sozinho o que é fatura
+            e o que é extrato, sem duplicar o que já foi importado. Contracheques em PDF não são
+            importados por aqui.
           </p>
           <div class="db-row">
             <button class="db-btn" :disabled="importBusy" @click="chooseImportFolder">

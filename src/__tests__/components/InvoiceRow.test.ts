@@ -6,6 +6,7 @@ import type { InvoiceInfo } from "@/types/api.types";
 function makeInvoice(overrides: Partial<InvoiceInfo> = {}): InvoiceInfo {
   return {
     id: "abc-123",
+    bank: "BTG",
     filename: "2026-05-fatura-btg.xlsx",
     month: "2026-05",
     row_count: 42,

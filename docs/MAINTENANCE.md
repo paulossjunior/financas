@@ -47,6 +47,10 @@ docs/                    ARCHITECTURE.md, MANUAL.md, este guia
 8. **Máscara de dinheiro**: inputs de valor usam `src/utils/money.ts` (`maskMoney`/`parseMoneyBR`).
 9. **UI/UX**: ao mexer em tela/fluxo/erro, aplique a skill `nielsen-heuristics`
    (`.claude/skills/nielsen-heuristics/SKILL.md`).
+10. **Chave de id do extrato é congelada**: a **primeira** ocorrência de um lançamento usa
+    `bank:{conta}:{data}:{desc normalizada}:{valor}` (ver `bank_statement::entry_key`).
+    Mudar essa string faz *todo* lançamento já gravado reimportar como novo. Repetições
+    idênticas no mesmo arquivo recebem sufixo `#n` (`entry_ids`) — nunca colapse duas em uma.
 
 ## Comandos
 
@@ -95,6 +99,36 @@ existente, `ALTER TABLE ... ADD COLUMN ...` tratando "duplicate column" como ok.
 Crie `domain/<x>.rs` puro, escreva os testes primeiro (`#[cfg(test)]`), registre em
 `domain/mod.rs` (`pub mod x;` + re-export se precisar). Cobertura ≥90% em lógica de núcleo.
 
+### Adicionar um novo banco de extrato (padrão strategy — feature 014)
+1. `domain/<banco>_statement.rs` **puro**: uma classe `Extrato<Banco>` no molde de
+   `ExtratoBanestes` — `parse(&str) -> Result<Self>` (estrutura tipada: metadados, saldos,
+   totais declarados, movimentos), `conferir() -> Conferencia` quando o extrato imprime
+   totais, `into_parsed() -> ParsedStatement` preenchendo `bank`. Detecção
+   `is_<banco>_statement(&str) -> bool` por marcadores estruturais (o nome do banco costuma
+   ser imagem e não aparece no texto). Teste com fixture de **texto anonimizado** em
+   `tests/fixtures/` — extrato real nunca vai para o repositório.
+2. `infrastructure/<banco>_statement.rs`: casca de I/O (arquivo → texto/linhas) + o
+   **strategy**: `pub struct <Banco>StatementReader;` implementando
+   `statement_reader::StatementReader` (`bank`, `extensions`, `recognizes`, `read`).
+3. Registre: uma linha em `statement_reader.rs::STATEMENT_READERS`. **Não há mais despacho
+   manual** — `commands/bank.rs` e `application/import_folder.rs` consultam o registro; a
+   mensagem de "formato não suportado" é gerada do registro (`supported_formats`).
+4. Reuse `classify_statement` (fatura/salário/interno + categorização) — **não** crie uma
+   segunda lógica de exclusão. Se a grafia do banco não casar, generalize o keyword existente.
+5. Conferência é **estrita**: `Divergiu` e `SemDados` recusam a importação
+   (`Conferencia::exigir`). Extrato sem totais impressos = extração mudou de forma = erro
+   visível, nunca importação sem rede. Num consolidado, confira pelo saldo **da conta**
+   (`Saldo Conta`), não pelo `Saldo Total` (que soma poupança/investimento).
+6. Frontend: acrescente a extensão no filtro de `ExtratoPage.vue`; a coluna "Origem" já mostra
+   `BankEntry.bank`.
+
+### Adicionar um novo banco de fatura de cartão
+Mesmo padrão: implemente `infrastructure/invoice_reader.rs::InvoiceReader` (`bank`,
+`extensions`, `read` → transações + warnings) e registre em `INVOICE_READERS`.
+`application/import_invoice.rs` é genérico: escolhe o strategy pela extensão e carimba
+`Invoice.bank = reader.bank()`. A tabela `invoices` tem coluna `bank` (default `'BTG'`) —
+nada de literal de banco fora do strategy.
+
 ### Input de dinheiro
 `inputmode="numeric"` + `@input="campo = maskMoney(campo)"`; no submit `parseMoneyBR(campo)`.
 Prefill de edição: formate com `toLocaleString("pt-BR",{minimumFractionDigits:2})`.
@@ -115,9 +149,15 @@ Comandos `backup_database`/`restore_database` (`commands/backup.rs`) sobre
 ### Pasta de importação automática (feature 013)
 Setting `import_directory` (`Option<String>` no `AppConfig`; vazio = desligado).
 `application/import_folder.rs::import_from_folder(dir, db, store, cfg, senha)`:
-- **Detecção de tipo**: `.xls` → extrato; `.xlsx` → tenta fatura (`import_invoice`),
-  se `INVALID_FORMAT`/`PARSE_ERROR` cai para extrato (`read_statement`). Falha em ambos
-  → item em `ignored` (não aborta a varredura). Fatura cifrada sem senha salva → ignorada.
+- **Detecção de tipo**: `.xls` → extrato BTG; `.xlsx` → tenta fatura (`import_invoice`),
+  se `INVALID_FORMAT`/`PARSE_ERROR` cai para extrato (`read_statement`); `.pdf` → só entra
+  se `is_banestes_statement` reconhecer o texto.
+- **O que vai para `ignored`**: planilha que nenhum parser aceita e fatura cifrada sem senha
+  salva — o usuário pôs ali esperando importar, então silêncio esconderia falha. **PDF que
+  não é extrato é pulado em silêncio**: contracheque mora legitimamente nessa pasta e a
+  varredura roda a cada abertura do app — listá-lo como "ignorado" sempre pareceria erro.
+  PDF já reconhecido como extrato que falha ao importar **é** reportado (`ERROR: …`).
+  Nada aborta a varredura.
 - **Dedup** herdado: fatura por `invoice_id` (nome) + `store.add`; extrato por `BankEntry.id`.
   Classificação de extrato compartilhada via `domain::bank_statement::classify_statement`.
 - **Gatilhos**: `set_import_directory` (definir/limpar + importar na hora, retorna
@@ -139,6 +179,9 @@ Setting `import_directory` (`Option<String>` no `AppConfig`; vazio = desligado).
 | 008 | Extrato bancário (.xls): crédito/débito, exclusão automática, dedup |
 | 010 | Categorias recorrentes + baseline + vigência + anti-duplicação; categorização unificada cartão+extrato |
 | 011 | Cálculo rigoroso de inflação pessoal (contribuições, cesta, renda, comportamental) |
+| 012 | Backup e restauração do banco |
+| 013 | Pasta de importação automática |
+| 014 | Extrato Banestes (.pdf): adapter por banco, entradas/saídas conferidas contra os totais do extrato |
 
 Cada `specs/NNN-*/` tem spec/plan/research/data-model/contracts/quickstart/tasks.
 
