@@ -48,6 +48,8 @@ fn apply_recurring(
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InvoiceInfo {
     pub id: String,
+    /// Bank that issued the invoice (stamped by the reader strategy on import).
+    pub bank: String,
     pub filename: String,
     pub month: String,
     pub due_date: Option<String>,
@@ -107,6 +109,7 @@ pub async fn list_invoices(store: State<'_, SharedStore>) -> Result<Vec<InvoiceI
         .into_iter()
         .map(|inv| InvoiceInfo {
             id: inv.id.to_string(),
+            bank: inv.bank.clone(),
             filename: inv.filename.clone(),
             month: inv.reference_month.to_string_iso(),
             due_date: inv.due_date.map(|d| d.format("%Y-%m-%d").to_string()),

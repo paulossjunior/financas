@@ -1,0 +1,54 @@
+
+
+Extrato de Conta Corrente
+
+
+
+
+
+
+  Extrato Consolidado Até 30/06/2026
+Data/Hora Emissão: 01/07/2026 09:02:44
+Ii7Jj8Kk9Ll0Mm1Nn2Oo3Pp
+
+SALDO TOTAL ENTRADAS E SAÍDAS
+
+R$ 7.949,63                  R$ 8.500,00
+
+                      R$ 1.550,37
+
+Agência: 12 - CENTRO Conta: 1234567-8
+
+Cliente: MARIA APARECIDA DA SILVA SOUZA Período: 01/06/2026 à 30/06/2026
+
+Data Lançamento Valor (R$)
+
+Saldo Anterior  1.000,00
+
+05  Credito Salario 05/06/2026-08:00:00 2000000000001 SIAPE FOLHA PAGAMENTO 8.000,00
+
+JUN/26 Saldo  9.000,00
+
+06  Pix Recebido 06/06/2026-09:15:00 2000000000002 MARIA APARECIDA DA SILVA SOUZA 500,00
+
+JUN/26 Saldo  9.500,00
+
+10  Pagamento Fatura Cartao 10/06/2026-10:00:00 2000000000003 CARTAO DE CREDITO - 1.200,00
+
+JUN/26 Saldo  8.300,00
+
+12  Pix Enviado 12/06/2026-14:00:00 2000000000004 BETA SERVICOS MEDICOS LTDA - 128,47
+
+JUN/26 Saldo  8.171,53
+
+15  Pix Enviado 15/06/2026-16:00:00 2000000000005 ALFA COMERCIO E REPRESENTACOES
+LTDA - 200,00
+
+JUN/26 Saldo  7.971,53
+
+20  Tarifa Mensal Pacote de Servicos - 21,90
+
+Saldos
+ Saldo Conta  7.949,63
+
+Saldo Total  7.949,63

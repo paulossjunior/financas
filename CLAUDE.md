@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/013-auto-import-folder/plan.md
+at specs/014-banestes-statement-adapter/plan.md
 <!-- SPECKIT END -->
 
 ## Project overview
@@ -15,6 +15,28 @@ monthly dashboard, an annual view, and PDF reports. 100% local, no network.
 - **Maintenance**: [docs/MAINTENANCE.md](docs/MAINTENANCE.md) — invariants, how-to recipes, DB, release, gotchas.
 - **Specs** (spec-kit): `specs/001-credit-card-dashboard`, `002-monthly-invoice-list`,
   `003-custom-categories`, `004-payslips-annual-reports` (contracheque, ano, avulsos, relatórios).
+
+## Real files (never in git)
+
+Real financial documents live **outside the repo**, in `/Users/paulossjunior/Documents/casa/`:
+
+| Folder | Content |
+|---|---|
+| `casa/extratos/` | bank statements (Banestes `.pdf`, BTG `.xls`) |
+| `casa/faturas/` | BTG card invoices (`.xlsx`, some encrypted) |
+| `casa/contracheque/` | SouGov.br payslips (`.pdf`) |
+
+Rules:
+
+- Read test files from there — **never copy one into the repo**, not even temporarily.
+- A repo fixture is always **anonymized**: fictitious holder/counterparties/account,
+  real dates and amounts (see `tests/fixtures/banestes_extrato.txt`). Derive it by hand
+  from a `casa/` file; the original stays put.
+- Never paste a real holder name, account number, or counterparty into code, tests, specs,
+  commit messages, or docs.
+- Scratch scripts that read these files go in the session scratchpad, not in `src-tauri/`.
+  If one has to live in the crate to compile (e.g. `src-tauri/examples/`), delete it in the
+  same turn and confirm with `git status`.
 
 ## Conventions
 

@@ -14,6 +14,8 @@ export interface ImportResult {
 
 export interface InvoiceInfo {
   id: string;
+  /** Bank that issued the invoice ("BTG", …) — stamped on import. */
+  bank: string;
   filename: string;
   month: string;
   due_date?: string;
@@ -99,6 +101,8 @@ export interface BankEntry {
 }
 
 export interface StatementPreview {
+  /** Bank detected from the file itself ("BTG" | "Banestes"). */
+  bank: string;
   holder: string;
   account: string;
   included: ClassifiedEntry[];
