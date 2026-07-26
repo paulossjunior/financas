@@ -90,19 +90,24 @@ pub fn has_password() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Once;
+    use std::sync::{Mutex, Once};
 
     // The mock credential store must be installed exactly once per process.
     static INIT: Once = Once::new();
-    fn use_mock() {
+    // …and the store is process-global shared state: tests that write the same
+    // credential must not run concurrently, or they clobber each other's setup.
+    static KEYCHAIN: Mutex<()> = Mutex::new(());
+
+    fn use_mock() -> std::sync::MutexGuard<'static, ()> {
         INIT.call_once(|| {
             keyring::set_default_credential_builder(keyring::mock::default_credential_builder());
         });
+        KEYCHAIN.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     #[test]
     fn save_get_clear_roundtrip() {
-        use_mock();
+        let _guard = use_mock();
         assert!(!has_password());
 
         save_password("11144477735").unwrap();
@@ -122,7 +127,7 @@ mod tests {
     // T004 — one credential per bank, no collisions, BTG on the legacy key.
     #[test]
     fn per_bank_credentials_do_not_collide() {
-        use_mock();
+        let _guard = use_mock();
 
         save_password_for("Santander", "senha-santander").unwrap();
         assert!(has_password_for("Santander"));
